@@ -48,6 +48,7 @@ loaded_model = model_from_json(loaded_model_json)
 loaded_model.load_weights("generated_models/trainedModelweight.h5")
 print("Loaded model from disk")
 loaded_model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
+loaded_model.summary()
 
 # load test data
 # X_train_orig, Y_train_orig, X_test_orig, Y_test_orig, classes = load_dataset()

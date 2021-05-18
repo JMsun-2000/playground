@@ -11,6 +11,7 @@ from keras.models import Model
 from keras.layers import Lambda
 from keras.layers.merge import concatenate
 from keras.layers import Input, Lambda, Conv2D
+from keras import backend as K
 
 from my_utils.utils import compose
 from my_utils.keras_darknet19 import (DarknetConv2D, DarknetConv2D_BN_Leaky,
@@ -63,6 +64,195 @@ def yolo(inputs, anchors, num_classes):
     num_anchors = len(anchors)
     body = YoloBody(inputs, num_anchors, num_classes)
     
+def yolo_head(feats, anchors, num_classes):
+    """Convert final layer features to bounding box parameters.
+    Parameters
+    ----------
+    feats : tensor
+        Final convolutional layer features.
+    anchors : array-like
+        Anchor box widths and heights.
+    num_classes : int
+        Number of target classes.
+
+    Returns
+    -------
+    box_xy : tensor
+        x, y box predictions adjusted by spatial location in conv layer.
+    box_wh : tensor
+        w, h box predictions adjusted by anchors and conv spatial resolution.
+    box_conf : tensor
+        Probability estimate for whether each box contains any object.
+    box_class_pred : tensor
+        Probability distribution estimate for each box over class labels.
+    """
+    num_anchors = len(anchors)
+    # Reshape to batch, height, width, num_anchors, box_params.
+    anchors_tensor = K.reshape(K.variable(anchors), [1, 1, 1, num_anchors, 2])
+    
+    # Static implementation for fixed models.
+    # TODO: Remove or add option for static implementation.
+    # _, conv_height, conv_width, _ = K.int_shape(feats)
+    # conv_dims = K.variable([conv_width, conv_height])
+    
+    # Dynamic implementation of conv dims for fully convolutional model.
+    # get grids shape (13, 13)
+    conv_dims = K.shape(feats)[1:3]  # assuming channels last
+    # In YOLO the height index is the inner most iteration.
+    # will generate array [ 0,  1,  2,  3,  4,  5,  6,  7,  8,  9, 10, 11, 12]
+    conv_height_index = K.arange(0, stop=conv_dims[0])
+    """
+    quick index from grid number to height index
+    array([ 0,  1,  2,  3,  4,  5,  6,  7,  8,  9, 10, 11, 12,  0,  1,  2,  3,
+        4,  5,  6,  7,  8,  9, 10, 11, 12, 
+        ....
+       10, 11, 12,  0,  1,  2,  3,  4,  5,  6,  7,  8,  9, 10, 11, 12],
+      dtype=int32)>
+    """
+    conv_height_index = K.tile(conv_height_index, [conv_dims[1]])
+    """
+    quick index from grid number to width index, for there is no direct function
+    So add a dimension at index 0 to make a 2d matrix
+    Then transpose it and flatten it again, get
+    
+    array([ 0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  1,  1,  1,  1,
+        1,  1,  1,  1,  1,  1,  1,  1,  1,  2,  2,  2,  2,  2,  2,  2,  2,
+        2,  2,  2,  2,  2,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,
+        ....
+        9,  9,  9,  9,  9,  9,  9,  9,  9,  9,  9, 10, 10, 10, 10, 10, 10,
+       10, 10, 10, 10, 10, 10, 10, 11, 11, 11, 11, 11, 11, 11, 11, 11, 11,
+       11, 11, 11, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12],
+      dtype=int32)>
+
+    """
+    conv_width_index = K.arange(0, stop=conv_dims[1])
+    #  array([[ 0,  1,  2,  3,  4,  5,  6,  7,  8,  9, 10, 11, 12],
+    # [ 0,  1,  2,  3,  4,  5,  6,  7,  8,  9, 10, 11, 12],
+    # ....
+    # [ 0,  1,  2,  3,  4,  5,  6,  7,  8,  9, 10, 11, 12],
+    # [ 0,  1,  2,  3,  4,  5,  6,  7,  8,  9, 10, 11, 12]], dtype=int32)>
+    conv_width_index = K.tile(K.expand_dims(conv_width_index, 0), [conv_dims[0], 1])
+    conv_width_index = K.flatten(K.transpose(conv_width_index))
+    """
+    array([[ 0,  0],
+       [ 1,  0],
+       [ 2,  0],
+       [ 3,  0],
+       ...
+       [ 9, 12],
+       [10, 12],
+       [11, 12],
+       [12, 12]], dtype=int32)>
+    """
+    conv_index = K.transpose(K.stack([conv_height_index, conv_width_index]))
+    # shape (169, 2) to (1, 13, 13, 1, 2)
+    # w,h index with same dimenation as feats.
+    conv_index = K.reshape(conv_index, [1, conv_dims[0], conv_dims[1], 1, 2])
+    # cast it as features dtype, here is from int32 to float32
+    conv_index = K.cast(conv_index, K.dtype(feats))
+    # reshape features by adding anchors axis
+    feats = K.reshape(feats, [-1, conv_dims[0], conv_dims[1], num_anchors, num_classes + 5])
+    # <tf.Tensor: shape=(1, 1, 1, 1, 2), dtype=int32, numpy=array([[[[[13, 13]]]]], dtype=float32)>
+    conv_dims = K.cast(K.reshape(conv_dims, [1, 1, 1, 1, 2]), K.dtype(feats))
+    
+    # get all sigmoid x, y
+    box_xy = K.sigmoid(feats[..., :2])
+    # exp w, h
+    box_wh = K.exp(feats[..., 2:4])
+    # sigmoid pc
+    box_confidence = K.sigmoid(feats[..., 4:5])
+    # softmax classes
+    box_class_probs = K.softmax(feats[..., 5:])
+    
+    # Adjust preditions to each spatial grid point and anchor size.
+    # Note: YOLO iterates over height index before width index.
+    # xy from 1 grid to whole image
+    box_xy = (box_xy + conv_index) / conv_dims
+    # wh under 5 different anchors' tensor
+    box_wh = box_wh * anchors_tensor / conv_dims
+
+    return box_xy, box_wh, box_confidence, box_class_probs
+
+def yolo_loss(args, anchors, num_classes, rescore_confidence=False, print_loss=False):
+    (yolo_output, true_boxes, detectors_mask, matching_true_boxes) = args
+    num_anchors = len(anchors)
+    object_scale = 5
+    no_object_scale = 1
+    class_scale = 1
+    coordinates_scale = 1
+    pred_xy, pred_wh, pred_confidence, pred_class_prob = yolo_head(yolo_output, anchors, num_classes)
+    
+    # Unadjusted box predictions for loss.
+    # TODO: Remove extra computation shared with yolo_head.
+    yolo_output_shape = K.shape(yolo_output)
+    # yolo_output (None, 13, 13, anchor*(5+classes))
+    feats = K.reshape(yolo_output, [-1, yolo_output_shape[1], yolo_output_shape[2], num_anchors, num_classes + 5])
+    # for one anchor inner index
+    # x, y: 0, 1
+    # w, h: 2, 3
+    # confidence: 4
+    # classes: 5~end
+    pred_boxes = K.concatenate(
+        (K.sigmoid(feats[..., 0:2]), feats[..., 2:4]), axis=-1)
+    
+    # TODO: Adjust predictions by image width/height for non-square images?
+    # IOUs may be off due to different aspect ratio.
+
+    # Expand pred x,y,w,h to allow comparison with ground truth.
+    # batch, conv_height, conv_width, num_anchors, num_true_boxes, box_params
+    pred_xy = K.expand_dims(pred_xy, 4)
+    pred_wh = K.expand_dims(pred_wh, 4)
+    
+    pred_wh_half = pred_wh / 2.
+    pred_mins = pred_xy - pred_wh_half
+    pred_maxes = pred_xy + pred_wh_half
+    
+    # Input(shape=(None, 5)) ~>  <tf.Tensor 'input_16:0' shape=(None, None, 5) dtype=float32>
+    true_boxes_shape = K.shape(true_boxes)
+     # batch, conv_height, conv_width, num_anchors, num_true_boxes, box_params
+    true_boxes = K.reshape(true_boxes, [
+        true_boxes_shape[0], 1, 1, 1, true_boxes_shape[1], true_boxes_shape[2]
+    ])
+    true_xy = true_boxes[..., 0:2]
+    true_wh = true_boxes[..., 2:4]
+    # Find IOU of each predicted box with each ground truth box.
+    true_wh_half = true_wh / 2.
+    true_mins = true_xy - true_wh_half
+    true_maxes = true_xy + true_wh_half
+    # max mins(top_left) is top_left of intersect part
+    intersect_mins = K.maximum(pred_mins, true_mins)
+    # min max(bottom_right) is bottom_right of intersect part
+    intersect_maxes = K.minimum(pred_maxes, true_maxes)
+    intersect_wh = K.maximum(intersect_maxes - intersect_mins, 0.)
+    intersect_areas = intersect_wh[..., 0] * intersect_wh[..., 1]
+    
+    pred_areas = pred_wh[..., 0] * pred_wh[..., 1]
+    true_areas = true_wh[..., 0] * true_wh[..., 1]
+    union_areas = pred_areas + true_areas - intersect_areas
+    # The perfect situation is interset_areas=union_areas
+    iou_scores = intersect_areas / union_areas
+    
+    # Best IOUs for each location.
+    best_ious = K.max(iou_scores, axis=4)  # Best IOU scores.
+    best_ious = K.expand_dims(best_ious)
+    
+    # A detector has found an object if IOU > thresh for some true box.
+    # thresh bool to float
+    object_detections = K.cast(best_ious > 0.6, K.dtype(best_ious))
+    
+    # TODO: Darknet region training includes extra coordinate loss for early
+    # training steps to encourage predictions to match anchor priors.
+    
+    # Determine confidence weights from object and no_object weights.
+    # NOTE: YOLO does not use binary cross-entropy here.
+    """
+    # divides up the image into a grid of 13*13 cells
+    # each of these celss is responsible for predicting 5 bounding boxes
+    detectors_mask_shape = (13, 13, 5, 1) 
+    """
+    no_object_weights = (no_object_scale * (1 - object_detections) *
+                         (1 - detectors_mask))
+    no_objects_loss = no_object_weights * K.square(-pred_confidence)
 
 def test_create_model():
     image_input = Input(shape=(608, 608, 3))
@@ -70,4 +260,15 @@ def test_create_model():
     yolo_model.summary()
 
 
-test_create_model()
+# test_create_model()
+
+
+
+
+
+
+
+
+
+
+

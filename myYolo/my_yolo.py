@@ -96,6 +96,7 @@ def yolo_head(feats, anchors, num_classes):
     # conv_dims = K.variable([conv_width, conv_height])
     
     # Dynamic implementation of conv dims for fully convolutional model.
+    # shape(feats) (m, gridx, gridy, anchors, xxx)
     # get grids shape (13, 13)
     conv_dims = K.shape(feats)[1:3]  # assuming channels last
     # In YOLO the height index is the inner most iteration.
@@ -243,16 +244,63 @@ def yolo_loss(args, anchors, num_classes, rescore_confidence=False, print_loss=F
     # TODO: Darknet region training includes extra coordinate loss for early
     # training steps to encourage predictions to match anchor priors.
     
-    # Determine confidence weights from object and no_object weights.
-    # NOTE: YOLO does not use binary cross-entropy here.
+    
     """
     # divides up the image into a grid of 13*13 cells
     # each of these celss is responsible for predicting 5 bounding boxes
     detectors_mask_shape = (13, 13, 5, 1) 
+    detectors_mask = Input(shape=detectors_mask_shape)
+    object_scale = 5
+    no_object_scale = 1
+    # Determine confidence weights from object and no_object weights.
+    # NOTE: YOLO does not use binary cross-entropy here.
+    
+    object_detections =1  => no_object_weights=0 since no_object_weight has been 0, there is no lost no_objects_loss=0
+    if no_object, just care pc loss, and pc = 0 is the best
+    
+    object_detections =0 => no_ojbect_weights= no_object_scale*(1 - detectors_mask) # 1-detectors_mask=no_detectors_mask
+    no_objects_loss is 0 - pc. For 0 is no object, 1 is object detected.
+    
     """
     no_object_weights = (no_object_scale * (1 - object_detections) *
                          (1 - detectors_mask))
-    no_objects_loss = no_object_weights * K.square(-pred_confidence)
+    no_objects_loss = no_object_weights * K.square(0 - pred_confidence)
+    
+    if rescore_confidence:
+        objects_loss = (object_scale * detectors_mask *
+                        K.square(best_ious - pred_confidence))
+    else:
+        objects_loss = (object_scale * detectors_mask *
+                        K.square(1 - pred_confidence))
+    confidence_loss = objects_loss + no_objects_loss
+    
+    # Classification loss for matching detections.
+    # NOTE: YOLO does not use categorical cross-entropy loss here.
+    matching_classes = K.cast(matching_true_boxes[..., 4], 'int32')
+    matching_classes = K.one_hot(matching_classes, num_classes)
+    classification_loss = (class_scale * detectors_mask *
+                           K.square(matching_classes - pred_class_prob))
+    
+    # Coordinate loss for matching detection boxes.
+    matching_boxes = matching_true_boxes[..., 0:4]
+    coordinates_loss = (coordinates_scale * detectors_mask *
+                        K.square(matching_boxes - pred_boxes))
+    
+    # Sum all loss
+    confidence_loss_sum = K.sum(confidence_loss)
+    classification_loss_sum = K.sum(classification_loss)
+    coordinates_loss_sum = K.sum(coordinates_loss)
+    total_loss = 0.5 * (
+        confidence_loss_sum + classification_loss_sum + coordinates_loss_sum)
+    if print_loss:
+        total_loss = tf.Print(
+            total_loss, [
+                total_loss, confidence_loss_sum, classification_loss_sum,
+                coordinates_loss_sum
+            ],
+            message='yolo_loss, conf_loss, class_loss, box_coord_loss:')
+
+    return total_loss
 
 def test_create_model():
     image_input = Input(shape=(608, 608, 3))

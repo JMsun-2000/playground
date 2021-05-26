@@ -8,11 +8,12 @@ Created on Wed Apr 28 10:23:35 2021
 
 import numpy as np
 import os
+import PIL
 from keras.layers import Input, Lambda, Conv2D
 from keras.models import load_model, Model
 from keras.callbacks import TensorBoard, ModelCheckpoint, EarlyStopping
 
-from my_yolo import (YoloBody, yolo_loss)
+from my_yolo import (YoloBody, yolo_loss, preprocess_true_boxes)
 import tensorflow as tf
 
 
@@ -47,6 +48,63 @@ def _main():
         matching_true_boxes
     )
   
+def process_data(images, boxes=None):
+    images = [PIL.Image.fromarray(i) for i in images]
+    orig_size = np.array([images[0].width, images[0].height])
+    orig_size = np.expand_dims(orig_size, axis=0)
+    
+     # Image preprocessing. uniform to size 416 * 416, RGB 0~255 to 0~1
+    processed_images = [i.resize((416, 416), PIL.Image.BICUBIC) for i in images]
+    processed_images = [np.array(image, dtype=np.float) for image in processed_images]
+    processed_images = [image/255. for image in processed_images]
+    
+    if boxes is not None:
+        # boxes[m, box_cnt, 5]
+        # Box preprocessing.
+        # Original boxes stored as 1D list of [class, x_min, y_min, x_max, y_max].
+        boxes = [box.reshape((-1, 5)) for box in boxes] 
+        # Get extents as [y_min, x_min, y_max, x_max, class] for comparision with
+        # model output. not use
+        boxes_extents = [box[:, [2, 1, 4, 3, 0]] for box in boxes]
+
+        # Get box parameters from [class, x_min, y_min, x_max, y_max] to [x_center, y_center, box_width, box_height, class].
+        boxes_xy = [0.5 * (box[:, 3:5] + box[:, 1:3]) for box in boxes]
+        boxes_wh = [box[:, 3:5] - box[:, 1:3] for box in boxes]
+        boxes_xy = [boxxy / orig_size for boxxy in boxes_xy]
+        boxes_wh = [boxwh / orig_size for boxwh in boxes_wh]
+        boxes = [np.concatenate((boxes_xy[i], boxes_wh[i], box[:, 0:1]), axis=1) for i, box in enumerate(boxes)] 
+        
+        # find the max number of boxes
+        max_boxes = 0
+        for boxz in boxes:
+            if boxz.shape[0] > max_boxes:
+                max_boxes = boxz.shape[0]
+                
+        # add zero pad for training
+        for i, boxz in enumerate(boxes):
+            if boxz.shape[0]  < max_boxes:
+                zero_padding = np.zeros( (max_boxes-boxz.shape[0], 5), dtype=np.float32)
+                boxes[i] = np.vstack((boxz, zero_padding))
+                
+        return np.array(processed_images), np.array(boxes)
+    else:
+        return np.array(processed_images)
+    
+def get_detector_mask(boxes, anchors):
+    '''
+    Precompute detectors_mask and matching_true_boxes for training.
+    Detectors mask is 1 for each spatial position in the final conv layer and
+    anchor that should be active for the given boxes and 0 otherwise.
+    Matching true boxes gives the regression targets for the ground truth box
+    that caused a detector to be active or 0 otherwise.
+    '''
+    # initial 0 for every sample (m)
+    detectors_mask = [0 for i in range(len(boxes))]
+    matching_true_boxes = [0 for i in range(len(boxes))]
+    for i, box in enumerate(boxes):
+        detectors_mask[i], matching_true_boxes[i] = preprocess_true_boxes(box, anchors, [416, 416])
+        
+    return np.array(detectors_mask), np.array(matching_true_boxes)
     
 def create_model(anchors, class_names, load_pretrained=True, freeze_body=True):
     # divides up the image into a grid of 13*13 cells

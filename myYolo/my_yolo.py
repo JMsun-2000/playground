@@ -302,6 +302,41 @@ def yolo_loss(args, anchors, num_classes, rescore_confidence=False, print_loss=F
 
     return total_loss
 
+
+def preprocess_true_boxes(true_boxes, anchors, image_size):
+    """Find detector in YOLO where ground truth box should appear.
+
+    Parameters
+    ----------
+    true_boxes : array
+        List of ground truth boxes in form of relative x, y, w, h, class.
+        Relative coordinates are in the range [0, 1] indicating a percentage
+        of the original image dimensions.
+    anchors : array
+        List of anchors in form of w, h.
+        Anchors are assumed to be in the range [0, conv_size] where conv_size
+        is the spatial dimension of the final convolutional features.
+    image_size : array-like
+        List of image dimensions in form of h, w in pixels.
+
+    Returns
+    -------
+    detectors_mask : array
+        0/1 mask for detectors in [conv_height, conv_width, num_anchors, 1]
+        that should be compared with a matching ground truth box.
+    matching_true_boxes: array
+        Same shape as detectors_mask with the corresponding ground truth box
+        adjusted for comparison with predicted parameters at training time.
+    """
+    # true_boxes is [m, box_cnt, 5], 5 is mid_x, mid_y, width, height, class
+    # image_size would be 416*416
+    # going to find best IOU to pair anchor box with true_boxes
+    height, width = image_size
+    num_anchors = len(anchors)
+    # Downsampling factor of 5x 2-stride max_pools == 32.
+    # TODO: Remove hardcoding of downscaling calculations.
+    
+
 def test_create_model():
     image_input = Input(shape=(608, 608, 3))
     yolo_model = YoloBody(image_input, 5, 5)

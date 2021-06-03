@@ -18,6 +18,7 @@ from my_utils.keras_darknet19 import (DarknetConv2D, DarknetConv2D_BN_Leaky,
                               darknet_body)
 
 import tensorflow as tf
+import numpy as np
 
 
 # def MyYolo(input_shape = (608, 608, 3)):
@@ -174,6 +175,17 @@ def yolo_head(feats, anchors, num_classes):
 
     return box_xy, box_wh, box_confidence, box_class_probs
 
+def yolo_boxes_to_corners(box_xy, box_wh):
+    """Convert YOLO box predictions to bounding box corners."""
+    box_mins = box_xy - (box_wh / 2.)
+    box_maxes = box_xy + (box_wh / 2.)
+    return K.concatenate([
+        box_mins[..., 1:2],  # y_min
+        box_mins[..., 0:1],  # x_min
+        box_maxes[..., 1:2],  # y_max
+        box_maxes[..., 0:1]  # x_max
+    ])
+
 def yolo_loss(args, anchors, num_classes, rescore_confidence=False, print_loss=False):
     (yolo_output, true_boxes, detectors_mask, matching_true_boxes) = args
     num_anchors = len(anchors)
@@ -302,13 +314,53 @@ def yolo_loss(args, anchors, num_classes, rescore_confidence=False, print_loss=F
 
     return total_loss
 
+def yolo_filter_boxes(boxes, box_confidence, box_class_probs, threshold=.6):
+    """Filter YOLO boxes based on object and class confidence."""
+    box_scores = box_confidence * box_class_probs
+    box_class_scores = K.max(box_scores, axis=-1)
+    prediction_mask = box_class_scores >= threshold
+    
+    # TODO: Expose tf.boolean_mask to Keras backend?
+    box_classes = K.argmax(box_scores, axis=-1)
+    boxes = tf.boolean_mask(boxes, prediction_mask)
+    scores = tf.boolean_mask(box_class_scores, prediction_mask)
+    classes = tf.boolean_mask(box_classes, prediction_mask)
+    return boxes, scores, classes
+    
+def yolo_eval(yolo_outputs,
+              image_shape,
+              max_boxes=10,
+              score_threshold=.6,
+              iou_threshold=.5):
+    """Evaluate YOLO model on given input batch and return filtered boxes."""
+    box_xy, box_wh, box_confidence, box_class_probs = yolo_outputs
+    boxes = yolo_boxes_to_corners(box_xy, box_wh)
+    boxes, scores, classes = yolo_filter_boxes(
+        boxes, box_confidence, box_class_probs, threshold=score_threshold)
+    
+   # Scale boxes back to original image shape.
+    height = image_shape[0]
+    width = image_shape[1]
+    image_dims = K.stack([height, width, height, width])
+    image_dims = K.reshape(image_dims, [1, 4])
+    boxes = boxes * image_dims
+
+   # TODO: Something must be done about this ugly hack!
+    max_boxes_tensor = K.variable(max_boxes, dtype='int32')
+    K.get_session().run(tf.variables_initializer([max_boxes_tensor]))
+    #Greedily selects a subset of bounding boxes in descending order of score
+    nms_index = tf.image.non_max_suppression(boxes, scores, max_boxes_tensor, iou_threshold=iou_threshold)
+    boxes = K.gather(boxes, nms_index)
+    scores = K.gather(scores, nms_index)
+    classes = K.gather(classes, nms_index)
+    return boxes, scores, classes
 
 def preprocess_true_boxes(true_boxes, anchors, image_size):
     """Find detector in YOLO where ground truth box should appear.
 
     Parameters
     ----------
-    true_boxes : array
+    true_boxes : array of boxes in 1 sample image
         List of ground truth boxes in form of relative x, y, w, h, class.
         Relative coordinates are in the range [0, 1] indicating a percentage
         of the original image dimensions.
@@ -335,7 +387,68 @@ def preprocess_true_boxes(true_boxes, anchors, image_size):
     num_anchors = len(anchors)
     # Downsampling factor of 5x 2-stride max_pools == 32.
     # TODO: Remove hardcoding of downscaling calculations.
+    assert height % 32 == 0, 'Image sizes in YOLO_v2 must be multiples of 32.'
+    assert width % 32 == 0, 'Image sizes in YOLO_v2 must be multiples of 32.'
+    # 416/32 = 13 grids
+    conv_height = height // 32
+    conv_width = width // 32
+    num_box_params = true_boxes.shape[1] # should be 5
+    detectors_mask = np.zeros((conv_height, conv_width, num_anchors, 1), dytpe=np.float32)
+    matching_true_boxes = np.zeros((conv_height, conv_width, num_anchors, num_box_params), dytpe=np.float32)
     
+    for box in true_boxes:
+        # scale box to convolutional feature spatial dimensions
+        box_class = box[4:5]
+        # [x, y, w, h] * [13, 13, 13, 13]
+        box = box[0:4] * np.array([conv_width, conv_height, conv_width, conv_height])
+        # round down, 0.0~1.0 to 0~12 grid index
+        i = np.floor(box[1]).astype('int')
+        j = np.floor(box[0]).astype('int')
+        best_iou = 0
+        best_anchor = 0
+        for k, anchor in enumerate(anchors):
+            # Find IOU between box shifted to origin and anchor box.
+            box_maxes = box[2:4] / 2.
+            box_mins = -box_maxes
+            anchor_maxes = (anchor / 2.)
+            anchor_mins = -anchor_maxes
+            '''
+            (-a, -b)
+              ┏━━━━━━━━━━━━━━━━┓
+              ┃                ┃
+              ┃  (-x, -y)      ┃
+              ┃      ┏━━━━━━━━━╋━━━━━━━┓
+              ┃      ┃  (a, b) ┃       ┃
+              ┗━━━━━━╋━━━━━━━━━┛       ┃
+                     ┗━━━━━━━━━━━━━━━━━┛(x, y)
+            '''
+            intersect_mins = np.maximum(box_mins, anchor_mins)
+            intersect_maxes = np.minimum(box_maxes, anchor_maxes)
+            intersect_wh = np.maximum(intersect_maxes - intersect_mins, 0.)
+            intersect_area = intersect_wh[0] * intersect_wh[1]
+            box_area = box[2] * box[3]
+            anchor_area = anchor[0] * anchor[1]
+            iou = intersect_area / (box_area + anchor_area - intersect_area)
+            if iou > best_iou:
+                best_iou = iou
+                best_anchor = k
+            
+        if best_iou > 0:
+            # set box to this anchor
+            detectors_mask[i, j, best_anchor] = 1
+            # convert box x, y coordinates to relative one in its grid
+            # convert box w, h relative to ist anchor's size
+            adjusted_box = np.array(
+                [
+                    box[0] - j, box[1] - i,
+                    np.log(box[2] / anchors[best_anchor][0]), np.log(box[3] / anchors[best_anchor][1]),
+                    box_class
+                ],
+                dtype=np.float32)
+            matching_true_boxes[i, j, best_anchor] = adjusted_box
+    # all set
+    return detectors_mask, matching_true_boxes
+                
 
 def test_create_model():
     image_input = Input(shape=(608, 608, 3))

@@ -393,8 +393,8 @@ def preprocess_true_boxes(true_boxes, anchors, image_size):
     conv_height = height // 32
     conv_width = width // 32
     num_box_params = true_boxes.shape[1] # should be 5
-    detectors_mask = np.zeros((conv_height, conv_width, num_anchors, 1), dytpe=np.float32)
-    matching_true_boxes = np.zeros((conv_height, conv_width, num_anchors, num_box_params), dytpe=np.float32)
+    detectors_mask = np.zeros((conv_height, conv_width, num_anchors, 1), dtype=np.float32)
+    matching_true_boxes = np.zeros((conv_height, conv_width, num_anchors, num_box_params), dtype=np.float32)
     
     for box in true_boxes:
         # scale box to convolutional feature spatial dimensions

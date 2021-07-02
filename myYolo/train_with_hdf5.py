@@ -202,19 +202,70 @@ def _main(args):
     '''
     try any data
     '''
-    test_data = np.array(
-        PIL.Image.open(io.BytesIO(voc['train/images'][11]))
-        .resize((416, 416), PIL.Image.BICUBIC), 
-        dtype=np.float)/255.
+    # test_data = np.array(
+    #     PIL.Image.open(io.BytesIO(voc['train/images'][11]))
+    #     .resize((416, 416), PIL.Image.BICUBIC), 
+    #     dtype=np.float)/255.
     
-    draw(model_body,
-        class_names,
-        anchors,
-        test_data,
-        image_set='val', # assumes training/validation split is 0.9
-        weights_name='trained_stage_3_best.h5',#trained_stage_3_best.h5',
-        save_all=False
-        )
+    # draw(model_body,
+    #     class_names,
+    #     anchors,
+    #     test_data,
+    #     image_set='val', # assumes training/validation split is 0.9
+    #     weights_name='trained_stage_3_best.h5',#trained_stage_3_best.h5',
+    #     save_all=False
+    #     )
+    
+    '''
+    print original size
+    '''
+    # model.load_weights(weights_name)
+    model_body.load_weights('trained_stage_3_best.h5')
+    
+    test_data = PIL.Image.open(io.BytesIO(voc['train/images'][11]))
+    predict_image(model_body, class_names, anchors, test_data)
+    
+def predict_image(model_body, class_names, anchors, original_image_data):
+    '''
+    Draw bounding boxes on image data
+    '''
+    resized_image = np.array(original_image_data.resize((416, 416), PIL.Image.BICUBIC), 
+        dtype=np.float)/255.
+
+    # Create output variables for prediction.
+    yolo_outputs = yolo_head(model_body.output, anchors, len(class_names))
+    input_image_shape = K.placeholder(shape=(2, ))
+    boxes, scores, classes = yolo_eval(
+        yolo_outputs, input_image_shape, score_threshold=0.6, iou_threshold=0.5)
+    # Run prediction on sample image.
+    sample_image = np.expand_dims(resized_image, axis=0)
+    
+    sess = K.get_session()  # TODO: Remove dependence on Tensorflow session.
+    # if  not os.path.exists(out_path):
+    #     os.makedirs(out_path)
+    
+    # session.run(any function about tf.placeholder, feed_dict={placeholder_name: input_value, ...})
+    out_boxes, out_scores, out_classes = sess.run(
+        [boxes, scores, classes],
+        feed_dict={
+            model_body.input: sample_image,
+            input_image_shape: [original_image_data.size[1], original_image_data.size[0]],
+            K.learning_phase(): 0
+        })
+    print('Found {} boxes for image.'.format(len(out_boxes)))
+    print(out_boxes)
+    
+    # Plot image with predicted boxes.
+    image_with_boxes = draw_boxes(original_image_data, out_boxes, out_classes,
+                                class_names, out_scores, image_converted=False)
+    # Save the image:
+    # if save_all or (len(out_boxes) > 0):
+    #     image = PIL.Image.fromarray(image_with_boxes)
+    #     image.save(os.path.join(out_path,str()+'.png'))
+
+    # To display (pauses the program):
+    plt.imshow(image_with_boxes, interpolation='nearest')
+    plt.show()
   
 def process_data(images, boxes=None):
     images = [PIL.Image.open(io.BytesIO(i)) for i in images]

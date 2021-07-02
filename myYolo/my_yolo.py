@@ -30,7 +30,7 @@ def space_to_depth_x2(x):
     """Thin wrapper for Tensorflow space_to_depth with block_size=2."""
     # Import currently required to make Lambda work.
     # See: https://github.com/fchollet/keras/issues/5088#issuecomment-273851273
-    return tf.nn.space_to_depth(x, block_size=2)    
+    return tf.space_to_depth(x, block_size=2)    
 
 def space_to_depth_x2_output_shape(input_shape):
     """Determine space_to_depth output shape for block_size=2.
@@ -100,6 +100,8 @@ def yolo_head(feats, anchors, num_classes):
     # shape(feats) (m, gridx, gridy, anchors, xxx)
     # get grids shape (13, 13)
     conv_dims = K.shape(feats)[1:3]  # assuming channels last
+    #conv_dims = [13, 13]
+    # conv_dims = feats.shape[1:3]  # assuming channels last
     # In YOLO the height index is the inner most iteration.
     # will generate array [ 0,  1,  2,  3,  4,  5,  6,  7,  8,  9, 10, 11, 12]
     conv_height_index = K.arange(0, stop=conv_dims[0])
@@ -171,6 +173,7 @@ def yolo_head(feats, anchors, num_classes):
     # xy from 1 grid to whole image
     box_xy = (box_xy + conv_index) / conv_dims
     # wh under 5 different anchors' tensor
+    #box_wh = box_wh * anchors_tensor / conv_dims
     box_wh = box_wh * anchors_tensor / conv_dims
 
     return box_xy, box_wh, box_confidence, box_class_probs

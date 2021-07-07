@@ -7,10 +7,10 @@ Created on Fri Apr 16 15:59:52 2021
 """
 
 
-from keras.models import Model
-from keras.layers import Lambda
-from keras.layers.merge import concatenate
-from keras.layers import Input, Lambda, Conv2D
+from tensorflow.keras import Model
+from tensorflow.keras.layers import Lambda
+from tensorflow.keras.layers import concatenate
+from tensorflow.keras.layers import Input, Lambda, Conv2D
 from keras import backend as K
 
 from my_utils.utils import compose
@@ -31,7 +31,7 @@ def space_to_depth_x2(x):
     # Import currently required to make Lambda work.
     # See: https://github.com/fchollet/keras/issues/5088#issuecomment-273851273
     import tensorflow as tf
-    return tf.space_to_depth(x, block_size=2)    
+    return tf.nn.space_to_depth(x, block_size=2)    
 
 def space_to_depth_x2_output_shape(input_shape):
     """Determine space_to_depth output shape for block_size=2.
@@ -90,7 +90,8 @@ def yolo_head(feats, anchors, num_classes):
     """
     num_anchors = len(anchors)
     # Reshape to batch, height, width, num_anchors, box_params.
-    anchors_tensor = K.reshape(K.variable(anchors), [1, 1, 1, num_anchors, 2])
+    #anchors_tensor = K.reshape(K.variable(anchors), [1, 1, 1, num_anchors, 2])
+    anchors_tensor = K.reshape(anchors, [1, 1, 1, num_anchors, 2])
     
     # Static implementation for fixed models.
     # TODO: Remove or add option for static implementation.
@@ -175,7 +176,7 @@ def yolo_head(feats, anchors, num_classes):
     box_xy = (box_xy + conv_index) / conv_dims
     # wh under 5 different anchors' tensor
     #box_wh = box_wh * anchors_tensor / conv_dims
-    box_wh = box_wh * anchors_tensor / conv_dims
+    box_wh = box_wh * K.cast(anchors_tensor, K.dtype(box_wh)) / conv_dims
 
     return box_xy, box_wh, box_confidence, box_class_probs
 

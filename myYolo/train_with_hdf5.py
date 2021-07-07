@@ -19,8 +19,9 @@ import io
 import os
 import PIL
 import h5py
-from keras.layers import Input, Lambda, Conv2D
-from keras.models import load_model, Model
+from tensorflow.keras.layers import Input
+from tensorflow.keras.layers import Lambda, Conv2D
+from tensorflow.keras.models import load_model, Model
 from keras.callbacks import TensorBoard, ModelCheckpoint, EarlyStopping
 
 from my_yolo import (YoloBody, yolo_loss, preprocess_true_boxes, yolo_head, yolo_eval)
@@ -31,6 +32,7 @@ import tensorflow as tf
 # tf.disable_eager_execution()
 from keras import backend as K
 import matplotlib.pyplot as plt
+import coremltools
 
 
 # Default anchor boxes
@@ -174,10 +176,10 @@ def _main(args):
     '''
     
     # test happy path logic, just use 2 samples
-    # train_image = np.array([voc['train/images'][27], voc['train/images'][28], voc['train/images'][29]])
-    # train_box = np.array([voc['train/boxes'][27], voc['train/boxes'][28], voc['train/boxes'][29]])
-    train_image = np.array(voc['train/images'][0:100])
-    train_box = np.array(voc['train/boxes'][0:100])
+    train_image = np.array([voc['train/images'][27], voc['train/images'][28], voc['train/images'][29]])
+    train_box = np.array([voc['train/boxes'][27], voc['train/boxes'][28], voc['train/boxes'][29]])
+    # train_image = np.array(voc['train/images'][0:100])
+    # train_box = np.array(voc['train/boxes'][0:100])
     #data = np.array(voc["train"][:]) # custom data saved as a numpy file.
     #  has 2 arrays: an object array 'boxes' (variable length of boxes in each image)
     #  and an array of images 'images'
@@ -186,6 +188,17 @@ def _main(args):
     detectors_mask, matching_true_boxes = get_detector_mask(boxes_data, anchors)
     
     model_body, model = create_model(anchors, class_names)
+    
+    #test code begin
+    model.compile(optimizer='adam', loss={
+        'yolo_loss': lambda y_true, y_pred: y_pred
+            }) # This is a hack to use the custom loss function in the last layer. 
+    model.fit([image_data, boxes_data, detectors_mask, matching_true_boxes],
+              np.zeros(len(image_data)),
+              validation_split=0.6,
+              batch_size=32,
+              epochs=5)
+    #test code end
     
     train(
         model,
@@ -196,7 +209,7 @@ def _main(args):
         detectors_mask,
         matching_true_boxes,
         epochs_default = 30,
-        validation_split=0.9
+        validation_split=0.6
     )
     
     '''
@@ -222,8 +235,24 @@ def _main(args):
     # model.load_weights(weights_name)
     model_body.load_weights('trained_stage_3_best.h5')
     
-    test_data = PIL.Image.open(io.BytesIO(voc['train/images'][70]))
+    # save trained model
+    save_trained_model(model_body)
+    
+    test_data = PIL.Image.open(io.BytesIO(voc['train/images'][27]))
     draw_predict_image(model_body, class_names, anchors, test_data, 600.)
+    
+def save_trained_model(trained_model):
+    trained_json = trained_model.to_json()
+    with open("generated_models/trainedModelstruct.json", "w") as json_file:
+        json_file.write(trained_json)
+    # serialize weights to HDF5
+    trained_model.save_weights("generated_models/trainedModelweight.h5")
+    print("Saved model to disk")
+    trained_model.save('generated_models/try.h5')
+    
+    print("try to convert model for ios")
+    your_model = coremltools.convert('generated_models/try.h5', source='tensorflow')
+    your_model.save('generated_models/try.mlmodel')
     
 def draw_predict_image(model_body, class_names, anchors, original_image_data, print_size_limit=1024.):
     '''
@@ -241,13 +270,14 @@ def draw_predict_image(model_body, class_names, anchors, original_image_data, pr
         
     # Create output variables for prediction.
     yolo_outputs = yolo_head(model_body.output, anchors, len(class_names))
-    input_image_shape = K.placeholder(shape=(2, ))
+    tf.compat.v1.disable_eager_execution()
+    input_image_shape = tf.compat.v1.placeholder(tf.float32, shape=(2, ))
     boxes, scores, classes = yolo_eval(
         yolo_outputs, input_image_shape, score_threshold=0.6, iou_threshold=0.5)
     # Run prediction on sample image.
     sample_image = np.expand_dims(image_for_predict, axis=0)
     
-    sess = K.get_session()  # TODO: Remove dependence on Tensorflow session.
+    sess = tf.compat.v1.get_session()  # TODO: Remove dependence on Tensorflow session.
     # if  not os.path.exists(out_path):
     #     os.makedirs(out_path)
     
@@ -395,22 +425,42 @@ def create_model(anchors, class_names, load_pretrained=True, freeze_body=True):
     # print(feats[..., 2:4])
     #debug end
     
-    # Place model loss on CPU to reduce GPU memory usage.
-    with tf.device('/cpu:0'):
-        model_loss = Lambda(yolo_loss, output_shape=(1, ), name='yolo_loss', 
-                            arguments={'anchors': anchors,
-                                        'num_classes': len(class_names)
-                                })([model_body.output, boxes_input, 
-                                    detectors_mask_input, matching_boxes_input])
+    # Place model loss on CPU to reduce GPU memory usage. TF1
+    # with tf.device('/cpu:0'):
+    #     model_loss = Lambda(yolo_loss, output_shape=(1, ), name='yolo_loss', 
+    #                         arguments={'anchors': anchors,
+    #                                     'num_classes': len(class_names)
+    #                             })([model_body.output, boxes_input, 
+    #                                 detectors_mask_input, matching_boxes_input])
                                     
     # test = yolo_loss([model_body.output, boxes_input, 
-    #                                 detectors_mask_input, matching_boxes_input], anchors, len(class_names))                      
+    #                                 detectors_mask_input, matching_boxes_input], anchors, len(class_names))    
+    model_loss = YoloLossLayer(name='yolo_loss')([model_body.output, boxes_input, 
+                                    detectors_mask_input, matching_boxes_input])
+                  
                                     
     model = Model(
         [model_body.input, boxes_input, detectors_mask_input,
          matching_boxes_input], model_loss)
     
     return model_body, model
+
+class YoloLossLayer(tf.keras.layers.Layer):
+    def __init__(self, name='yolo_loss', **kwargs):
+        super(YoloLossLayer, self).__init__(name=name, **kwargs)
+        
+    def call(self, args):
+        return yolo_loss(args, YOLO_ANCHORS, 20) 
+
+# class YoloLossLayer(tf.keras.layers.Layer):
+#     def __init__(self, name='yolo_loss', anchors=YOLO_ANCHORS, num_classes=20, **kwargs):
+#         super(YoloLossLayer, self).__init__(name=name, **kwargs)
+#         self.anchors=anchors
+#         self.num_classes=num_classes
+        
+#     def call(self, args):
+#         return yolo_loss(args, self.anchors, self.num_classes) 
+    
 
 def train(model, class_names, anchors, image_data, boxes, detectors_mask, matching_true_boxes, epochs_default =30, validation_split=0.1):
     '''

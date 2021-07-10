@@ -11,7 +11,7 @@ from tensorflow.keras import Model
 from tensorflow.keras.layers import Lambda
 from tensorflow.keras.layers import concatenate
 from tensorflow.keras.layers import Input, Lambda, Conv2D
-from keras import backend as K
+from tensorflow.keras import backend as K
 
 from my_utils.utils import compose
 from my_utils.keras_darknet19 import (DarknetConv2D, DarknetConv2D_BN_Leaky,
@@ -331,6 +331,36 @@ def yolo_filter_boxes(boxes, box_confidence, box_class_probs, threshold=.6):
     scores = tf.boolean_mask(box_class_scores, prediction_mask)
     classes = tf.boolean_mask(box_classes, prediction_mask)
     return boxes, scores, classes
+
+def yolo_eval_with_sess(yolo_outputs,
+              image_shape,
+              sess,
+              max_boxes=10,
+              score_threshold=.6,
+              iou_threshold=.5):
+    """Evaluate YOLO model on given input batch and return filtered boxes."""
+    box_xy, box_wh, box_confidence, box_class_probs = yolo_outputs
+    boxes = yolo_boxes_to_corners(box_xy, box_wh)
+    boxes, scores, classes = yolo_filter_boxes(
+        boxes, box_confidence, box_class_probs, threshold=score_threshold)
+    
+   # Scale boxes back to original image shape.
+    height = image_shape[0]
+    width = image_shape[1]
+    image_dims = K.stack([height, width, height, width])
+    image_dims = K.reshape(image_dims, [1, 4])
+    boxes = boxes * image_dims
+   
+
+    # TODO: Something must be done about this ugly hack!
+    max_boxes_tensor = K.variable(max_boxes, dtype='int32')
+    sess.run(tf.compat.v1.variables_initializer([max_boxes_tensor]))
+    #Greedily selects a subset of bounding boxes in descending order of score
+    nms_index = tf.image.non_max_suppression(boxes, scores, max_boxes_tensor, iou_threshold=iou_threshold)
+    boxes = K.gather(boxes, nms_index)
+    scores = K.gather(scores, nms_index)
+    classes = K.gather(classes, nms_index)
+    return boxes, scores, classes
     
 def yolo_eval(yolo_outputs,
               image_shape,
@@ -349,10 +379,13 @@ def yolo_eval(yolo_outputs,
     image_dims = K.stack([height, width, height, width])
     image_dims = K.reshape(image_dims, [1, 4])
     boxes = boxes * image_dims
+   
 
-   # TODO: Something must be done about this ugly hack!
-    max_boxes_tensor = K.variable(max_boxes, dtype='int32')
-    K.get_session().run(tf.variables_initializer([max_boxes_tensor]))
+    # TODO: Something must be done about this ugly hack!
+    with tf.compat.v1.Session() as sess:
+        max_boxes_tensor = K.variable(max_boxes, dtype='int32')
+        sess.run(tf.compat.v1.variables_initializer([max_boxes_tensor]))
+    sess.close()
     #Greedily selects a subset of bounding boxes in descending order of score
     nms_index = tf.image.non_max_suppression(boxes, scores, max_boxes_tensor, iou_threshold=iou_threshold)
     boxes = K.gather(boxes, nms_index)

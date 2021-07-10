@@ -24,13 +24,13 @@ from tensorflow.keras.layers import Lambda, Conv2D
 from tensorflow.keras.models import load_model, Model
 from keras.callbacks import TensorBoard, ModelCheckpoint, EarlyStopping
 
-from my_yolo import (YoloBody, yolo_loss, preprocess_true_boxes, yolo_head, yolo_eval)
+from my_yolo import (YoloBody, yolo_loss, preprocess_true_boxes, yolo_head, yolo_eval, yolo_eval_with_sess)
 from my_utils.draw_boxes import draw_boxes
 import tensorflow as tf
 # import tensorflow.compat.v1 as tf
-# tf.disable_v2_behavior()
-# tf.disable_eager_execution()
-from keras import backend as K
+#tf.compat.v1.disable_v2_behavior()
+#tf.compat.v1.disable_eager_execution()
+from tensorflow.keras import backend as K
 import matplotlib.pyplot as plt
 import coremltools
 
@@ -190,14 +190,14 @@ def _main(args):
     model_body, model = create_model(anchors, class_names)
     
     #test code begin
-    model.compile(optimizer='adam', loss={
-        'yolo_loss': lambda y_true, y_pred: y_pred
-            }) # This is a hack to use the custom loss function in the last layer. 
-    model.fit([image_data, boxes_data, detectors_mask, matching_true_boxes],
-              np.zeros(len(image_data)),
-              validation_split=0.6,
-              batch_size=32,
-              epochs=5)
+    # model.compile(optimizer='adam', loss={
+    #     'yolo_loss': lambda y_true, y_pred: y_pred
+    #         }) # This is a hack to use the custom loss function in the last layer. 
+    # model.fit([image_data, boxes_data, detectors_mask, matching_true_boxes],
+    #           np.zeros(len(image_data)),
+    #           validation_split=0.6,
+    #           batch_size=32,
+    #           epochs=5)
     #test code end
     
     train(
@@ -208,8 +208,8 @@ def _main(args):
         boxes_data,
         detectors_mask,
         matching_true_boxes,
-        epochs_default = 30,
-        validation_split=0.6
+        epochs_default = 100,
+        validation_split=0.3
     )
     
     '''
@@ -236,10 +236,132 @@ def _main(args):
     model_body.load_weights('trained_stage_3_best.h5')
     
     # save trained model
-    save_trained_model(model_body)
+    #save_trained_model(model_body)
     
-    test_data = PIL.Image.open(io.BytesIO(voc['train/images'][27]))
-    draw_predict_image(model_body, class_names, anchors, test_data, 600.)
+    test_data = PIL.Image.open(io.BytesIO(voc['train/images'][29]))
+    do_predict(model_body, class_names, anchors, test_data, 600.)
+    
+def do_predict(model_body, class_names, anchors, test_data, print_size_limit=1024.):
+    '''
+    Draw bounding boxes on image data
+    '''
+    image_for_draw = test_data
+    orginal_size = test_data.size
+    longer_side = max(orginal_size[0], orginal_size[1])
+    if (longer_side > print_size_limit):
+        ratio = print_size_limit/longer_side
+        image_for_draw = test_data.resize((orginal_size * ratio), PIL.Image.BICUBIC)
+    
+    '''
+    image for predict
+    '''
+    image_for_predict = np.array(test_data.resize((416, 416), PIL.Image.BICUBIC), 
+        dtype=np.float)/255.
+    
+    sample_image = np.expand_dims(image_for_predict, axis=0)
+    
+    predicted_result = model_body(sample_image)
+    predicted_result = predicted_result.numpy()
+    
+    '''
+    yolo_head in np
+    '''
+    num_anchors = len(anchors)
+    num_classes = len(class_names)
+    
+    anchors_tensor = anchors.reshape((1, 1, 1, num_anchors, 2))
+    conv_dims = predicted_result.shape[1:3]
+    conv_height_index = np.arange(0, conv_dims[0])
+    conv_height_index = np.tile(conv_height_index, [conv_dims[1]])
+    
+    conv_width_index = np.arange(0, conv_dims[1])
+    conv_width_index = np.tile(np.expand_dims(conv_width_index, 0), [conv_dims[0], 1])
+    conv_width_index = np.transpose(conv_width_index).flatten()
+    
+    conv_index = np.transpose(np.stack([conv_height_index, conv_width_index]))
+    conv_index = conv_index.reshape((1, conv_dims[0], conv_dims[1], 1, 2))
+    conv_index = conv_index.astype(predicted_result.dtype)
+    
+    feats = predicted_result.reshape((-1, conv_dims[0], conv_dims[1], num_anchors, num_classes + 5))
+    conv_dims = np.array(conv_dims).reshape((1, 1, 1, 1, 2)).astype(feats.dtype)
+    
+    box_xy = tf.math.sigmoid(feats[..., :2])
+    box_wh = tf.math.exp(feats[..., 2:4])
+    
+    box_xy = (box_xy + conv_index) / conv_dims
+    box_wh = box_wh * anchors_tensor / conv_dims
+    box_confidence = tf.math.sigmoid(feats[..., 4:5])
+    box_class_probs = tf.math.softmax(feats[..., 5:])
+    
+    '''
+    yolo_eval in np
+    '''
+    # yolo filter boxes
+    out_boxes, out_scores, out_classes = yolo_predicted_eval([box_xy, box_wh, box_confidence, box_class_probs],
+                                                             image_for_draw.size,
+                                                             score_threshold=0.6,
+                                                             iou_threshold=0.5)
+    print('Found {} boxes for image.'.format(len(out_boxes)))
+    print(out_boxes)
+    
+    # Plot image with predicted boxes.
+    image_with_boxes = draw_boxes(image_for_draw, out_boxes, out_classes,
+                                class_names, out_scores, image_converted=False)
+    # Save the image:
+    # if save_all or (len(out_boxes) > 0):
+    #     image = PIL.Image.fromarray(image_with_boxes)
+    #     image.save(os.path.join(out_path,str()+'.png'))
+
+    # To display (pauses the program):
+    plt.imshow(image_with_boxes, interpolation='nearest')
+    plt.show()
+    
+def yolo_predicted_eval(yolo_outputs,
+              image_shape,
+              max_boxes=10,
+              score_threshold=.6,
+              iou_threshold=.5):
+    box_xy, box_wh, box_confidence, box_class_probs = yolo_outputs
+    # boxes to corners
+    boxes = predicted_boxes_to_corners(box_xy, box_wh)
+    # yolo filter boxes
+    boxes, scores, classes = filter_predicted_boxes(
+        boxes, box_confidence, box_class_probs, threshold=score_threshold)
+    
+    width = float(image_shape[0])
+    height = float(image_shape[1])
+    image_dims = K.stack([height, width, height, width])
+    image_dims = K.reshape(image_dims, [1, 4])
+    real_boxes = boxes * image_dims
+    
+    nms_index = tf.image.non_max_suppression(
+        real_boxes, scores, max_boxes, iou_threshold=iou_threshold)
+    real_boxes = K.gather(real_boxes, nms_index)
+    scores = K.gather(scores, nms_index)
+    classes = K.gather(classes, nms_index)
+    return real_boxes, scores, classes
+
+def filter_predicted_boxes(boxes, box_confidence, box_class_probs, threshold=.6):
+    score_threshold=0.6
+    iou_threshold=0.5
+    box_scores = box_confidence * box_class_probs
+    box_classes = tf.math.argmax(box_scores, axis=-1) #Returns the indices of the maximum values along an axis
+    box_class_scores = K.max(box_scores, axis=-1)
+    prediction_mask = box_class_scores >= score_threshold
+    
+    boxes = tf.boolean_mask(boxes, prediction_mask)
+    scores = tf.boolean_mask(box_class_scores, prediction_mask)
+    classes = tf.boolean_mask(box_classes, prediction_mask)
+    return boxes, scores, classes
+    
+def predicted_boxes_to_corners(box_xy, box_wh):
+    box_mins = box_xy - (box_wh / 2.)
+    box_maxes = box_xy + (box_wh / 2.)
+    return K.concatenate((box_mins[..., 1:2], # y_min
+                            box_mins[..., 0:1],  # x_min
+                            box_maxes[..., 1:2], # y_max
+                            box_maxes[..., 0:1]  # x_max
+                            ))
     
 def save_trained_model(trained_model):
     trained_json = trained_model.to_json()
@@ -267,30 +389,44 @@ def draw_predict_image(model_body, class_names, anchors, original_image_data, pr
     if (longer_side > print_size_limit):
         ratio = print_size_limit/longer_side
         image_for_draw = original_image_data.resize((orginal_size * ratio), PIL.Image.BICUBIC)
-        
+    
+
     # Create output variables for prediction.
     yolo_outputs = yolo_head(model_body.output, anchors, len(class_names))
-    tf.compat.v1.disable_eager_execution()
-    input_image_shape = tf.compat.v1.placeholder(tf.float32, shape=(2, ))
+
+    #test----
+    # box_xy, box_wh, box_confidence, box_class_probs = yolo_outputs
+    # box_mins = box_xy - (box_wh / 2.)
+    # box_maxes = box_xy + (box_wh / 2.)
+    #test end------
+    
+    # tf.compat.v1.disable_eager_execution()
+    input_image_shape =  tf.compat.v1.keras.backend.placeholder(shape=(2, ))
     boxes, scores, classes = yolo_eval(
         yolo_outputs, input_image_shape, score_threshold=0.6, iou_threshold=0.5)
+    # g = tf.compat.v1.Graph()
+    # with g.as_default():        
     # Run prediction on sample image.
     sample_image = np.expand_dims(image_for_predict, axis=0)
     
-    sess = tf.compat.v1.get_session()  # TODO: Remove dependence on Tensorflow session.
+    # TODO: Remove dependence on Tensorflow session.
     # if  not os.path.exists(out_path):
     #     os.makedirs(out_path)
-    
+
     # session.run(any function about tf.placeholder, feed_dict={placeholder_name: input_value, ...})
-    out_boxes, out_scores, out_classes = sess.run(
-        [boxes, scores, classes],
-        feed_dict={
-            model_body.input: sample_image,
-            input_image_shape: [image_for_draw.size[1], image_for_draw.size[0]],
-            K.learning_phase(): 0
-        })
-    print('Found {} boxes for image.'.format(len(out_boxes)))
-    print(out_boxes)
+    # default_sess = tf.compat.v1.Session(graph=tf.compat.v1.get_default_graph())
+    # tf.compat.v1.keras.backend.set_session(default_sess)
+    with tf.compat.v1.Session() as sess:
+        out_boxes, out_scores, out_classes = sess.run(
+            [boxes, scores, classes],
+            feed_dict={
+                model_body.input: sample_image,
+                input_image_shape: [image_for_draw.size[1], image_for_draw.size[0]],
+                K.learning_phase(): 0
+            })
+        print('Found {} boxes for image.'.format(len(out_boxes)))
+        print(out_boxes)
+    sess.close()
     
     # Plot image with predicted boxes.
     image_with_boxes = draw_boxes(image_for_draw, out_boxes, out_classes,

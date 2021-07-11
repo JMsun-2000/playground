@@ -48,7 +48,8 @@ def test(args):
     
     data_path = "train_data/pascal_voc_07_12.hdf5"
     voc = h5py.File(data_path, 'r')
-    image = PIL.Image.open(io.BytesIO(voc['train/images'][28]))
+    image = PIL.Image.open(io.BytesIO(voc['train/images'][29]))
+    boxes = voc['train/boxes'][29]
     orig_size = np.array([image.width, image.height])
     orig_size = np.expand_dims(orig_size, axis=0)
 
@@ -59,7 +60,6 @@ def test(args):
 
     # Box preprocessing.
     # Original boxes stored as 1D list of class, x_min, y_min, x_max, y_max.
-    boxes = voc['train/boxes'][28]
     boxes = boxes.reshape((-1, 5))
     # Get extents as y_min, x_min, y_max, x_max, class for comparision with
     # model output.
@@ -126,7 +126,7 @@ def test(args):
     detectors_mask = np.expand_dims(detectors_mask, axis=0)
     matching_true_boxes = np.expand_dims(matching_true_boxes, axis=0)
 
-    num_steps = 1000
+    num_steps = 500
     # TODO: For full training, put preprocessing inside training loop.
     # for i in range(num_steps):
     #     loss = model.train_on_batch(
@@ -176,8 +176,8 @@ def _main(args):
     '''
     
     # test happy path logic, just use 2 samples
-    train_image = np.array([voc['train/images'][27], voc['train/images'][28], voc['train/images'][29]])
-    train_box = np.array([voc['train/boxes'][27], voc['train/boxes'][28], voc['train/boxes'][29]])
+    train_image = np.array([ voc['train/images'][29]])
+    train_box = np.array([voc['train/boxes'][29]])
     # train_image = np.array(voc['train/images'][0:100])
     # train_box = np.array(voc['train/boxes'][0:100])
     #data = np.array(voc["train"][:]) # custom data saved as a numpy file.
@@ -208,8 +208,9 @@ def _main(args):
         boxes_data,
         detectors_mask,
         matching_true_boxes,
-        epochs_default = 100,
-        validation_split=0.3
+        epochs_default = 500,
+        batch_default =1,
+        validation_split=0.
     )
     
     '''
@@ -233,7 +234,9 @@ def _main(args):
     print original size
     '''
     # model.load_weights(weights_name)
-    model_body.load_weights('trained_stage_3_best.h5')
+    #model_body.load_weights('trained_stage_3_best.h5')
+    model_body.load_weights('trained_stage_3.h5')
+    #model_body.load_weights('overfit_weights.h5')
     
     # save trained model
     #save_trained_model(model_body)
@@ -260,44 +263,48 @@ def do_predict(model_body, class_names, anchors, test_data, print_size_limit=102
     
     sample_image = np.expand_dims(image_for_predict, axis=0)
     
-    predicted_result = model_body(sample_image)
-    predicted_result = predicted_result.numpy()
+    predicted_result = model_body.predict(sample_image)
     
-    '''
-    yolo_head in np
-    '''
-    num_anchors = len(anchors)
-    num_classes = len(class_names)
+    predicted_out_put = yolo_predict_head(predicted_result, anchors, len(class_names))
     
-    anchors_tensor = anchors.reshape((1, 1, 1, num_anchors, 2))
-    conv_dims = predicted_result.shape[1:3]
-    conv_height_index = np.arange(0, conv_dims[0])
-    conv_height_index = np.tile(conv_height_index, [conv_dims[1]])
+    # predicted_result = predicted_result.numpy()
     
-    conv_width_index = np.arange(0, conv_dims[1])
-    conv_width_index = np.tile(np.expand_dims(conv_width_index, 0), [conv_dims[0], 1])
-    conv_width_index = np.transpose(conv_width_index).flatten()
+    # '''
+    # yolo_head in np
+    # '''
+    # num_anchors = len(anchors)
+    # num_classes = len(class_names)
     
-    conv_index = np.transpose(np.stack([conv_height_index, conv_width_index]))
-    conv_index = conv_index.reshape((1, conv_dims[0], conv_dims[1], 1, 2))
-    conv_index = conv_index.astype(predicted_result.dtype)
+    # anchors_tensor = anchors.reshape((1, 1, 1, num_anchors, 2))
+    # conv_dims = predicted_result.shape[1:3]
+    # conv_height_index = np.arange(0, conv_dims[0])
+    # conv_height_index = np.tile(conv_height_index, [conv_dims[1]])
     
-    feats = predicted_result.reshape((-1, conv_dims[0], conv_dims[1], num_anchors, num_classes + 5))
-    conv_dims = np.array(conv_dims).reshape((1, 1, 1, 1, 2)).astype(feats.dtype)
+    # conv_width_index = np.arange(0, conv_dims[1])
+    # conv_width_index = np.tile(np.expand_dims(conv_width_index, 0), [conv_dims[0], 1])
+    # conv_width_index = np.transpose(conv_width_index).flatten()
     
-    box_xy = tf.math.sigmoid(feats[..., :2])
-    box_wh = tf.math.exp(feats[..., 2:4])
+    # conv_index = np.transpose(np.stack([conv_height_index, conv_width_index]))
+    # conv_index = conv_index.reshape((1, conv_dims[0], conv_dims[1], 1, 2))
+    # conv_index = conv_index.astype(predicted_result.dtype)
     
-    box_xy = (box_xy + conv_index) / conv_dims
-    box_wh = box_wh * anchors_tensor / conv_dims
-    box_confidence = tf.math.sigmoid(feats[..., 4:5])
-    box_class_probs = tf.math.softmax(feats[..., 5:])
+    # feats = predicted_result.reshape((-1, conv_dims[0], conv_dims[1], num_anchors, num_classes + 5))
+    # conv_dims = np.array(conv_dims).reshape((1, 1, 1, 1, 2)).astype(feats.dtype)
+    
+    # box_xy = tf.math.sigmoid(feats[..., :2])
+    # box_wh = tf.math.exp(feats[..., 2:4])
+    
+    # box_xy = (box_xy + conv_index) / conv_dims
+    # box_wh = box_wh * anchors_tensor / conv_dims
+    # box_confidence = tf.math.sigmoid(feats[..., 4:5])
+    # box_class_probs = tf.math.softmax(feats[..., 5:])
+    
     
     '''
     yolo_eval in np
     '''
     # yolo filter boxes
-    out_boxes, out_scores, out_classes = yolo_predicted_eval([box_xy, box_wh, box_confidence, box_class_probs],
+    out_boxes, out_scores, out_classes = yolo_predicted_eval(predicted_out_put,
                                                              image_for_draw.size,
                                                              score_threshold=0.6,
                                                              iou_threshold=0.5)
@@ -315,6 +322,120 @@ def do_predict(model_body, class_names, anchors, test_data, print_size_limit=102
     # To display (pauses the program):
     plt.imshow(image_with_boxes, interpolation='nearest')
     plt.show()
+    
+def yolo_predict_head(feats, anchors, num_classes):
+    """Convert final layer features to bounding box parameters.
+    Parameters
+    ----------
+    feats : tensor
+        Final convolutional layer features.
+    anchors : array-like
+        Anchor box widths and heights.
+    num_classes : int
+        Number of target classes.
+
+    Returns
+    -------
+    box_xy : tensor
+        x, y box predictions adjusted by spatial location in conv layer.
+    box_wh : tensor
+        w, h box predictions adjusted by anchors and conv spatial resolution.
+    box_conf : tensor
+        Probability estimate for whether each box contains any object.
+    box_class_pred : tensor
+        Probability distribution estimate for each box over class labels.
+    """
+    num_anchors = len(anchors)
+    # Reshape to batch, height, width, num_anchors, box_params.
+    #anchors_tensor = K.reshape(K.variable(anchors), [1, 1, 1, num_anchors, 2])
+    anchors_tensor = K.reshape(anchors, [1, 1, 1, num_anchors, 2])
+    
+    # Static implementation for fixed models.
+    # TODO: Remove or add option for static implementation.
+    # _, conv_height, conv_width, _ = K.int_shape(feats)
+    # conv_dims = K.variable([conv_width, conv_height])
+    
+    # Dynamic implementation of conv dims for fully convolutional model.
+    # shape(feats) (m, gridx, gridy, anchors, xxx)
+    # get grids shape (13, 13)
+    conv_dims = K.shape(feats)[1:3]  # assuming channels last
+    #conv_dims = [13, 13]
+    # conv_dims = feats.shape[1:3]  # assuming channels last
+    # In YOLO the height index is the inner most iteration.
+    # will generate array [ 0,  1,  2,  3,  4,  5,  6,  7,  8,  9, 10, 11, 12]
+    conv_height_index = K.arange(0, stop=conv_dims[0])
+    """
+    quick index from grid number to height index
+    array([ 0,  1,  2,  3,  4,  5,  6,  7,  8,  9, 10, 11, 12,  0,  1,  2,  3,
+        4,  5,  6,  7,  8,  9, 10, 11, 12, 
+        ....
+       10, 11, 12,  0,  1,  2,  3,  4,  5,  6,  7,  8,  9, 10, 11, 12],
+      dtype=int32)>
+    """
+    conv_height_index = K.tile(conv_height_index, [conv_dims[1]])
+    """
+    quick index from grid number to width index, for there is no direct function
+    So add a dimension at index 0 to make a 2d matrix
+    Then transpose it and flatten it again, get
+    
+    array([ 0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  1,  1,  1,  1,
+        1,  1,  1,  1,  1,  1,  1,  1,  1,  2,  2,  2,  2,  2,  2,  2,  2,
+        2,  2,  2,  2,  2,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,
+        ....
+        9,  9,  9,  9,  9,  9,  9,  9,  9,  9,  9, 10, 10, 10, 10, 10, 10,
+       10, 10, 10, 10, 10, 10, 10, 11, 11, 11, 11, 11, 11, 11, 11, 11, 11,
+       11, 11, 11, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12],
+      dtype=int32)>
+
+    """
+    conv_width_index = K.arange(0, stop=conv_dims[1])
+    #  array([[ 0,  1,  2,  3,  4,  5,  6,  7,  8,  9, 10, 11, 12],
+    # [ 0,  1,  2,  3,  4,  5,  6,  7,  8,  9, 10, 11, 12],
+    # ....
+    # [ 0,  1,  2,  3,  4,  5,  6,  7,  8,  9, 10, 11, 12],
+    # [ 0,  1,  2,  3,  4,  5,  6,  7,  8,  9, 10, 11, 12]], dtype=int32)>
+    conv_width_index = K.tile(K.expand_dims(conv_width_index, 0), [conv_dims[0], 1])
+    conv_width_index = K.flatten(K.transpose(conv_width_index))
+    """
+    array([[ 0,  0],
+       [ 1,  0],
+       [ 2,  0],
+       [ 3,  0],
+       ...
+       [ 9, 12],
+       [10, 12],
+       [11, 12],
+       [12, 12]], dtype=int32)>
+    """
+    conv_index = K.transpose(K.stack([conv_height_index, conv_width_index]))
+    # shape (169, 2) to (1, 13, 13, 1, 2)
+    # w,h index with same dimenation as feats.
+    conv_index = K.reshape(conv_index, [1, conv_dims[0], conv_dims[1], 1, 2])
+    # cast it as features dtype, here is from int32 to float32
+    conv_index = K.cast(conv_index, feats.dtype)
+    # reshape features by adding anchors axis
+    feats = K.reshape(feats, [-1, conv_dims[0], conv_dims[1], num_anchors, num_classes + 5])
+    # <tf.Tensor: shape=(1, 1, 1, 1, 2), dtype=int32, numpy=array([[[[[13, 13]]]]], dtype=float32)>
+    conv_dims = K.cast(K.reshape(conv_dims, [1, 1, 1, 1, 2]), K.dtype(feats))
+    
+    # get all sigmoid x, y
+    box_xy = K.sigmoid(feats[..., :2])
+    # exp w, h
+    box_wh = K.exp(feats[..., 2:4])
+    # sigmoid pc
+    box_confidence = K.sigmoid(feats[..., 4:5])
+    # softmax classes
+    box_class_probs = K.softmax(feats[..., 5:])
+    
+    # Adjust preditions to each spatial grid point and anchor size.
+    # Note: YOLO iterates over height index before width index.
+    # xy from 1 grid to whole image
+    box_xy = (box_xy + conv_index) / conv_dims
+    # wh under 5 different anchors' tensor
+    #box_wh = box_wh * anchors_tensor / conv_dims
+    box_wh = box_wh * K.cast(anchors_tensor, K.dtype(box_wh)) / conv_dims
+
+    return box_xy, box_wh, box_confidence, box_class_probs
     
 def yolo_predicted_eval(yolo_outputs,
               image_shape,
@@ -342,13 +463,12 @@ def yolo_predicted_eval(yolo_outputs,
     return real_boxes, scores, classes
 
 def filter_predicted_boxes(boxes, box_confidence, box_class_probs, threshold=.6):
-    score_threshold=0.6
-    iou_threshold=0.5
     box_scores = box_confidence * box_class_probs
-    box_classes = tf.math.argmax(box_scores, axis=-1) #Returns the indices of the maximum values along an axis
+    box_classes = K.argmax(box_scores, axis=-1)
     box_class_scores = K.max(box_scores, axis=-1)
-    prediction_mask = box_class_scores >= score_threshold
-    
+    prediction_mask = box_class_scores >= threshold
+
+    # TODO: Expose tf.boolean_mask to Keras backend?
     boxes = tf.boolean_mask(boxes, prediction_mask)
     scores = tf.boolean_mask(box_class_scores, prediction_mask)
     classes = tf.boolean_mask(box_classes, prediction_mask)
@@ -517,12 +637,14 @@ def create_model(anchors, class_names, load_pretrained=True, freeze_body=True):
     
     # create model body
     yolo_model = YoloBody(image_input, len(anchors), len(class_names))
+    model_body = Model(image_input, yolo_model.output)
   #  yolo_model.summary()
-    # original darknet layers, model.layers[-1] return last layer
-    topless_yolo = Model(yolo_model.input, yolo_model.layers[-2].output)
-    #topless_yolo.summary()
-    
+
     if load_pretrained:
+        # original darknet layers, model.layers[-1] return last layer
+        topless_yolo = Model(yolo_model.input, yolo_model.layers[-2].output)
+        #topless_yolo.summary()
+    
         topless_yolo_path = os.path.join('model_data', 'yolo_topless.h5')
         """
         if not os.path.exists(topless_yolo_path):
@@ -539,12 +661,12 @@ def create_model(anchors, class_names, load_pretrained=True, freeze_body=True):
         #     weights= layer.get_weights()
         #     print(weights)
 
-    if freeze_body:
-        for layer in topless_yolo.layers:
-            layer.trainable = False
-    # last layer is replaced
-    final_layer = Conv2D(len(anchors)*(5+len(class_names)), (1, 1), activation='linear')(topless_yolo.output)
-    model_body = Model(image_input, final_layer)
+        if freeze_body:
+            for layer in topless_yolo.layers:
+                layer.trainable = False
+        # last layer is replaced
+        final_layer = Conv2D(len(anchors)*(5+len(class_names)), (1, 1), activation='linear')(topless_yolo.output)
+        model_body = Model(image_input, final_layer)
     
     #debug
     # from keras import backend as K
@@ -562,17 +684,18 @@ def create_model(anchors, class_names, load_pretrained=True, freeze_body=True):
     #debug end
     
     # Place model loss on CPU to reduce GPU memory usage. TF1
-    # with tf.device('/cpu:0'):
-    #     model_loss = Lambda(yolo_loss, output_shape=(1, ), name='yolo_loss', 
-    #                         arguments={'anchors': anchors,
-    #                                     'num_classes': len(class_names)
-    #                             })([model_body.output, boxes_input, 
-    #                                 detectors_mask_input, matching_boxes_input])
+    with tf.device('/cpu:0'):
+        model_loss = Lambda(yolo_loss, output_shape=(1, ), name='yolo_loss', 
+                            arguments={'anchors': anchors,
+                                        'num_classes': len(class_names)
+                                        # ,'print_loss': True
+                                })([model_body.output, boxes_input, 
+                                    detectors_mask_input, matching_boxes_input])
                                     
     # test = yolo_loss([model_body.output, boxes_input, 
     #                                 detectors_mask_input, matching_boxes_input], anchors, len(class_names))    
-    model_loss = YoloLossLayer(name='yolo_loss')([model_body.output, boxes_input, 
-                                    detectors_mask_input, matching_boxes_input])
+    # model_loss = YoloLossLayer(name='yolo_loss')([model_body.output, boxes_input, 
+    #                                 detectors_mask_input, matching_boxes_input])
                   
                                     
     model = Model(
@@ -586,6 +709,7 @@ class YoloLossLayer(tf.keras.layers.Layer):
         super(YoloLossLayer, self).__init__(name=name, **kwargs)
         
     def call(self, args):
+        print(args)
         return yolo_loss(args, YOLO_ANCHORS, 20) 
 
 # class YoloLossLayer(tf.keras.layers.Layer):
@@ -596,9 +720,13 @@ class YoloLossLayer(tf.keras.layers.Layer):
         
 #     def call(self, args):
 #         return yolo_loss(args, self.anchors, self.num_classes) 
-    
 
-def train(model, class_names, anchors, image_data, boxes, detectors_mask, matching_true_boxes, epochs_default =30, validation_split=0.1):
+
+def custom_loss(y_actual,y_pred): 
+    return y_pred
+
+def train(model, class_names, anchors, image_data, boxes, detectors_mask, matching_true_boxes, 
+          batch_default = 32, epochs_default =30, validation_split=0.1, is_load_pretrain=False):
     '''
     retrain/fine-tune the model
 
@@ -613,45 +741,42 @@ def train(model, class_names, anchors, image_data, boxes, detectors_mask, matchi
     # func(y_true, y_pred):
     #   return y_pred
     # end
-    model.compile(optimizer='adam', loss={
-        'yolo_loss': lambda y_true, y_pred: y_pred
-            }) # This is a hack to use the custom loss function in the last layer.
     
     logging = TensorBoard()
     checkpoint = ModelCheckpoint("trained_stage_3_best.h5", monitor='val_loss',
                                  save_weights_only=True, save_best_only=True)
     early_stopping = EarlyStopping(monitor='val_loss', min_delta=0, patience=15, verbose=1, mode='auto')
     
+    if (is_load_pretrain):
+        model.compile(optimizer='adam', loss=custom_loss) # This is a hack to use the custom loss function in the last layer.
+        model.fit([image_data, boxes, detectors_mask, matching_true_boxes],
+                  np.zeros(len(image_data)),
+                  validation_split=validation_split,
+                  batch_size=32,
+                  epochs=5)
+        model.save_weights('trained_stage_1.h5')
+
+    model_body, model = create_model(anchors, class_names, load_pretrained=False, freeze_body=False)
+    model.compile(optimizer='adam', loss=custom_loss)  # This is a hack to use the custom loss function in the last layer.
+
+    if (is_load_pretrain):
+        model.load_weights('trained_stage_1.h5')
+    #test overfit
+    #model.load_weights('trained_stage_3.h5')
+
     model.fit([image_data, boxes, detectors_mask, matching_true_boxes],
               np.zeros(len(image_data)),
               validation_split=validation_split,
-              batch_size=32,
-              epochs=5)
-    model.save_weights('trained_stage_1.h5')
-
-    model_body, model = create_model(anchors, class_names, load_pretrained=False, freeze_body=False)
-
-    model.load_weights('trained_stage_1.h5')
-
-    model.compile(
-        optimizer='adam', loss={
-            'yolo_loss': lambda y_true, y_pred: y_pred
-        })  # This is a hack to use the custom loss function in the last layer.
-
-
-    model.fit([image_data, boxes, detectors_mask, matching_true_boxes],
-              np.zeros(len(image_data)),
-              validation_split=0.1,
-              batch_size=8,
-              epochs=30,
+              batch_size=batch_default,
+              epochs=epochs_default,
               callbacks=[logging])
 
     model.save_weights('trained_stage_2.h5')
 
     model.fit([image_data, boxes, detectors_mask, matching_true_boxes],
               np.zeros(len(image_data)),
-              validation_split=0.1,
-              batch_size=8,
+              validation_split=validation_split,
+              batch_size=batch_default,
               epochs=epochs_default,
               callbacks=[logging, checkpoint, early_stopping])
 

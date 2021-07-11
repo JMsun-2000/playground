@@ -310,7 +310,7 @@ def yolo_loss(args, anchors, num_classes, rescore_confidence=False, print_loss=F
     total_loss = 0.5 * (
         confidence_loss_sum + classification_loss_sum + coordinates_loss_sum)
     if print_loss:
-        total_loss = tf.Print(
+        total_loss = tf.print(
             total_loss, [
                 total_loss, confidence_loss_sum, classification_loss_sum,
                 coordinates_loss_sum

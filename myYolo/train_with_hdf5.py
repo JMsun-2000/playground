@@ -161,7 +161,26 @@ def test(args):
                                   class_names, out_scores)
     plt.imshow(image_with_boxes, interpolation='nearest')
     plt.show()
-
+    
+def pure_test(pic_num):
+    anchors = YOLO_ANCHORS
+    class_names = get_classes('model_data/pascal_classes.txt')
+    data_path = "train_data/pascal_voc_07_12.hdf5"
+    voc = h5py.File(data_path, 'r')
+    model_body, model = create_model(anchors, class_names, False, False)
+    
+    # overfit
+    model_body.load_weights('train_result/trained_overfit.h5')
+    test_data = PIL.Image.open(io.BytesIO(voc['train/images'][pic_num]))
+    #test_data = PIL.Image.open('test_me.jpg')
+    do_predict(model_body, class_names, anchors, test_data, print_size_limit=800., score_threshold=0.1, iou_threshold=0.9)
+    
+    # val_best
+    model_body.load_weights('train_result/trained_best_in_val.h5')
+    test_data = PIL.Image.open(io.BytesIO(voc['train/images'][pic_num]))
+    #test_data = PIL.Image.open('test_me.jpg')
+    do_predict(model_body, class_names, anchors, test_data, print_size_limit=800., score_threshold=0.1, iou_threshold=0.9)
+    
 def _main(args):
     anchors = YOLO_ANCHORS
     class_names = get_classes('model_data/pascal_classes.txt')
@@ -175,11 +194,17 @@ def _main(args):
     train_box = np.array(voc['train/boxes'])
     '''
     
+    test_sample_num = 3
+    latest_weight_file = 'train_result/latest_weight.h5'
+    
     # test happy path logic, just use 2 samples
-    train_image = np.array([ voc['train/images'][29]])
-    train_box = np.array([voc['train/boxes'][29]])
-    # train_image = np.array(voc['train/images'][0:100])
-    # train_box = np.array(voc['train/boxes'][0:100])
+    # train_image = np.array([voc['train/images'][test_sample_num], voc['train/images'][test_sample_num+1]])
+    # train_box = np.array([voc['train/boxes'][test_sample_num], voc['train/boxes'][test_sample_num+1]])
+    # test end
+    
+    train_image = np.array(voc['train/images'][0:3600])
+    train_box = np.array(voc['train/boxes'][0:3600])
+    
     #data = np.array(voc["train"][:]) # custom data saved as a numpy file.
     #  has 2 arrays: an object array 'boxes' (variable length of boxes in each image)
     #  and an array of images 'images'
@@ -187,7 +212,16 @@ def _main(args):
     
     detectors_mask, matching_true_boxes = get_detector_mask(boxes_data, anchors)
     
-    model_body, model = create_model(anchors, class_names)
+    model_body, model = create_model(anchors, class_names, False, False)
+    
+    if os.path.isfile(latest_weight_file):    
+        model.load_weights(latest_weight_file)
+    
+    model.compile(
+        optimizer='adam', loss={
+            'yolo_loss': lambda y_true, y_pred: y_pred
+        })  # This is a hack to use the custom loss function in the last layer.
+
     
     #test code begin
     # model.compile(optimizer='adam', loss={
@@ -200,51 +234,89 @@ def _main(args):
     #           epochs=5)
     #test code end
     
-    train(
-        model,
-        class_names,
-        anchors,
-        image_data,
-        boxes_data,
-        detectors_mask,
-        matching_true_boxes,
-        epochs_default = 500,
-        batch_default =1,
-        validation_split=0.
-    )
-    
-    '''
-    try any data
-    '''
-    # test_data = np.array(
-    #     PIL.Image.open(io.BytesIO(voc['train/images'][11]))
-    #     .resize((416, 416), PIL.Image.BICUBIC), 
-    #     dtype=np.float)/255.
-    
-    # draw(model_body,
+    # train(
+    #     model,
     #     class_names,
     #     anchors,
-    #     test_data,
-    #     image_set='val', # assumes training/validation split is 0.9
-    #     weights_name='trained_stage_3_best.h5',#trained_stage_3_best.h5',
-    #     save_all=False
-    #     )
+    #     image_data,
+    #     boxes_data,
+    #     detectors_mask,
+    #     matching_true_boxes,
+    #     epochs_default = 250, # for trained overfit
+    #     batch_default =2,
+    #     validation_split=0.,
+    #     is_load_pretrain = False
+    # )
+    logging = TensorBoard()
+    checkpoint = ModelCheckpoint("train_result/trained_test_best.h5", monitor='val_loss',
+                                 save_weights_only=True, save_best_only=True)
+    early_stopping = EarlyStopping(monitor='val_loss', min_delta=0, patience=15, verbose=1, mode='auto')
+
+    num_steps = 1
     
-    '''
-    print original size
-    '''
-    # model.load_weights(weights_name)
-    #model_body.load_weights('trained_stage_3_best.h5')
-    model_body.load_weights('trained_stage_3.h5')
-    #model_body.load_weights('overfit_weights.h5')
+    best_loss_file = 'train_result/test_loss_best.npy'
+    best_loss = {'train_loss': 10000000000.0, 'val_loss': 10000000000.0}
+    if os.path.isfile(best_loss_file):
+        best_loss = np.load(best_loss_file, allow_pickle='TRUE').item()
+        
     
-    # save trained model
-    #save_trained_model(model_body)
+    # TODO: For full training, put preprocessing inside training loop.
+    # for i in range(num_steps):
+    #     loss = model.train_on_batch(
+    #         [image_data, boxes, detectors_mask, matching_true_boxes],
+    #         np.zeros(len(image_data)))
+    for cnt in range(2):
+        history = model.fit([image_data, boxes_data, detectors_mask, matching_true_boxes],
+                  np.zeros(len(image_data)),
+                  batch_size=30,
+                  epochs=num_steps,
+                  validation_split = 0.2,
+                  callbacks=[logging, checkpoint, early_stopping])
+        model.save_weights(latest_weight_file)
+        
+        # save best
+        if best_loss['train_loss'] > history.history['loss'][0]:
+            best_loss['train_loss'] = history.history['loss'][0]
+            model.save_weights('train_result/trained_overfit.h5')
+            np.save(best_loss_file, best_loss)
+            
+        if best_loss['val_loss'] > history.history['val_loss'][0]:
+            best_loss['val_loss'] = history.history['val_loss'][0]
+            model.save_weights('train_result/trained_best_in_val.h5')
+            np.save(best_loss_file, best_loss)
+        
+        '''
+        try any data
+        '''
+        # test_data = np.array(
+        #     PIL.Image.open(io.BytesIO(voc['train/images'][11]))
+        #     .resize((416, 416), PIL.Image.BICUBIC), 
+        #     dtype=np.float)/255.
+        
+        # draw(model_body,
+        #     class_names,
+        #     anchors,
+        #     test_data,
+        #     image_set='val', # assumes training/validation split is 0.9
+        #     weights_name='trained_stage_3_best.h5',#trained_stage_3_best.h5',
+        #     save_all=False
+        #     )
+        
+        '''
+        print original size
+        '''
+        # model.load_weights(weights_name)
+        #model_body.load_weights('trained_stage_3_best.h5')
+        model_body.load_weights(latest_weight_file)
+        #model_body.load_weights('overfit_weights.h5')
+        
+        # save trained model
+        #save_trained_model(model_body)
+        
+        test_data = PIL.Image.open(io.BytesIO(voc['train/images'][78]))
+        do_predict(model_body, class_names, anchors, test_data, print_size_limit=1200., score_threshold=0.01, iou_threshold=0.9)
     
-    test_data = PIL.Image.open(io.BytesIO(voc['train/images'][29]))
-    do_predict(model_body, class_names, anchors, test_data, 600.)
-    
-def do_predict(model_body, class_names, anchors, test_data, print_size_limit=1024.):
+def do_predict(model_body, class_names, anchors, test_data, print_size_limit=1024., score_threshold=0.6, iou_threshold=0.5):
     '''
     Draw bounding boxes on image data
     '''
@@ -253,7 +325,8 @@ def do_predict(model_body, class_names, anchors, test_data, print_size_limit=102
     longer_side = max(orginal_size[0], orginal_size[1])
     if (longer_side > print_size_limit):
         ratio = print_size_limit/longer_side
-        image_for_draw = test_data.resize((orginal_size * ratio), PIL.Image.BICUBIC)
+        #image_for_draw = test_data.resize((orginal_size * ratio), PIL.Image.BICUBIC)
+        image_for_draw = test_data.resize((int(orginal_size[0]*ratio),int(orginal_size[1]*ratio)), PIL.Image.BICUBIC)
     
     '''
     image for predict
@@ -306,8 +379,8 @@ def do_predict(model_body, class_names, anchors, test_data, print_size_limit=102
     # yolo filter boxes
     out_boxes, out_scores, out_classes = yolo_predicted_eval(predicted_out_put,
                                                              image_for_draw.size,
-                                                             score_threshold=0.6,
-                                                             iou_threshold=0.5)
+                                                             score_threshold=score_threshold,
+                                                             iou_threshold=iou_threshold)
     print('Found {} boxes for image.'.format(len(out_boxes)))
     print(out_boxes)
     
@@ -684,13 +757,13 @@ def create_model(anchors, class_names, load_pretrained=True, freeze_body=True):
     #debug end
     
     # Place model loss on CPU to reduce GPU memory usage. TF1
-    with tf.device('/cpu:0'):
-        model_loss = Lambda(yolo_loss, output_shape=(1, ), name='yolo_loss', 
-                            arguments={'anchors': anchors,
-                                        'num_classes': len(class_names)
-                                        # ,'print_loss': True
-                                })([model_body.output, boxes_input, 
-                                    detectors_mask_input, matching_boxes_input])
+    #with tf.device('/cpu:0'):
+    model_loss = Lambda(yolo_loss, output_shape=(1, ), name='yolo_loss', 
+                        arguments={'anchors': anchors,
+                                    'num_classes': len(class_names)
+                                    # ,'print_loss': True
+                            })([model_body.output, boxes_input, 
+                                detectors_mask_input, matching_boxes_input])
                                     
     # test = yolo_loss([model_body.output, boxes_input, 
     #                                 detectors_mask_input, matching_boxes_input], anchors, len(class_names))    
@@ -726,7 +799,7 @@ def custom_loss(y_actual,y_pred):
     return y_pred
 
 def train(model, class_names, anchors, image_data, boxes, detectors_mask, matching_true_boxes, 
-          batch_default = 32, epochs_default =30, validation_split=0.1, is_load_pretrain=False):
+          batch_default = 8, epochs_default =30, validation_split=0.1, is_load_pretrain=False):
     '''
     retrain/fine-tune the model
 

@@ -71,17 +71,19 @@ class ViewController: UIViewController, AVCapturePhotoCaptureDelegate {
 //
 //        let input_data = try? MLMultiArray(shape:[1, 64, 64, 3], dataType:.double)
 //        print(input_data)
-    /*
-        let my_image = UIImage(named: "images/0.jpg")
+        // test code
+
+        let my_image = UIImage(named: "images/try_mew2.jpg")
         print(my_image)
+        capturedPreviewImage.image = my_image
 //        let resized_image = resizeImage(image: my_image!, newWidth: 64, newHeight: 64)
 //        print(resized_image)
-        let imageView = UIImageView(image: my_image)
-        imageView.frame = CGRect(x: 800, y: 30, width: 150, height: 150)
-        self.view.addSubview(imageView)
+//        let imageView = UIImageView(image: my_image)
+//        imageView.frame = CGRect(x: 800, y: 30, width: 150, height: 150)
+//        self.view.addSubview(imageView)
          let my_prediction = doPredictFromImage(underPredictImage: my_image!)
          showInUI(myIdentity: my_prediction!)
-        */
+    
         samplepic0.image = UIImage(named: "images/no0.png")
         samplepic1.image = UIImage(named: "images/no1.png")
         samplepic2.image = UIImage(named: "images/no2.png")
@@ -183,11 +185,14 @@ class ViewController: UIViewController, AVCapturePhotoCaptureDelegate {
     
     func photoOutput(_ output: AVCapturePhotoOutput, didFinishProcessingPhoto photo: AVCapturePhoto, error: Error?) {
         
+        /* emulator hasn't camera  */
         guard let imageData = photo.fileDataRepresentation()
             else { return }
         
         let getimage = UIImage(data: imageData)
-//        let getimage =  UIImage(named: "images/my_two_square.jpg")
+
+        // for test
+//         let getimage =  UIImage(named: "images/try_mew2.jpg")
         if triggeredByCamera {
             capturedPreviewImage.image = getimage
             triggeredByCamera = false

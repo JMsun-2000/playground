@@ -162,7 +162,7 @@ def test(args):
     plt.imshow(image_with_boxes, interpolation='nearest')
     plt.show()
     
-def pure_test(pic_num):
+def pure_test(pic_num, score_threshold = 0.3, iou_threshold = 0.7):
     anchors = YOLO_ANCHORS
     class_names = get_classes('model_data/pascal_classes.txt')
     data_path = "train_data/pascal_voc_07_12.hdf5"
@@ -173,13 +173,80 @@ def pure_test(pic_num):
     model_body.load_weights('train_result/trained_overfit.h5')
     test_data = PIL.Image.open(io.BytesIO(voc['train/images'][pic_num]))
     #test_data = PIL.Image.open('test_me.jpg')
-    do_predict(model_body, class_names, anchors, test_data, print_size_limit=800., score_threshold=0.1, iou_threshold=0.9)
+    print('overfit')
+    do_predict(model_body, class_names, anchors, test_data, print_size_limit=800., score_threshold=score_threshold, iou_threshold=iou_threshold)
     
     # val_best
     model_body.load_weights('train_result/trained_best_in_val.h5')
     test_data = PIL.Image.open(io.BytesIO(voc['train/images'][pic_num]))
     #test_data = PIL.Image.open('test_me.jpg')
-    do_predict(model_body, class_names, anchors, test_data, print_size_limit=800., score_threshold=0.1, iou_threshold=0.9)
+    print('best in val')
+    do_predict(model_body, class_names, anchors, test_data, print_size_limit=800., score_threshold=score_threshold, iou_threshold=iou_threshold)
+    
+    
+CONVERTED_TRAIN_DATA_PATH = 'train_data/converted_pascal_voc_07_12.hdf5'
+def convert_train_data_directly_usable():
+    anchors = YOLO_ANCHORS
+    class_names = get_classes('model_data/pascal_classes.txt')
+    data_path = "train_data/pascal_voc_07_12.hdf5"
+    
+    voc = h5py.File(data_path, 'r')
+    train_image = np.array(voc['train/images'][0:5000])
+    train_box = np.array(voc['train/boxes'][0:5000])
+    
+    image_data, boxes_data = process_data(train_image, train_box)
+    detectors_mask, matching_true_boxes = get_detector_mask(boxes_data, anchors)
+    
+    voc_h5file = h5py.File(CONVERTED_TRAIN_DATA_PATH, 'w')
+    voc_h5file.create_dataset('image_data', data=image_data)
+    voc_h5file.create_dataset('boxes_data', data=boxes_data)
+    voc_h5file.create_dataset('detectors_mask', data=detectors_mask)
+    voc_h5file.create_dataset('matching_true_boxes', data=matching_true_boxes)
+    voc_h5file.flush()
+    voc_h5file.close()
+    
+def train_with_converted_data(round_times):
+    anchors = YOLO_ANCHORS
+    class_names = get_classes('model_data/pascal_classes.txt')
+    latest_weight_file = 'train_result/latest_weight.h5'
+    
+    voc_usable = h5py.File(CONVERTED_TRAIN_DATA_PATH, 'r')
+    image_data = voc_usable['image_data']
+    boxes_data = voc_usable['boxes_data']
+    detectors_mask = voc_usable['detectors_mask']
+    matching_true_boxes = voc_usable['matching_true_boxes']
+    
+    model_body, model = create_model(anchors, class_names, False, False)
+    if os.path.isfile(latest_weight_file):    
+        model.load_weights(latest_weight_file)
+    model.compile(
+        optimizer='adam', loss={
+            'yolo_loss': lambda y_true, y_pred: y_pred
+        })  # This is a hack to use the custom loss function in the last layer.
+    
+    best_loss_file = 'train_result/test_loss_best.npy'
+    best_loss = {'train_loss': 10000000000.0, 'val_loss': 10000000000.0}
+    if os.path.isfile(best_loss_file):
+        best_loss = np.load(best_loss_file, allow_pickle='TRUE').item()
+    
+    for cnt in range(round_times):
+       history = model.fit([image_data, boxes_data, detectors_mask, matching_true_boxes],
+          np.zeros(len(image_data)),
+          batch_size=1,
+          epochs=1,
+          validation_split = 0.2)
+       # save best
+       if best_loss['train_loss'] > history.history['loss'][0]:
+            best_loss['train_loss'] = history.history['loss'][0]
+            model.save_weights('train_result/trained_overfit.h5')
+            np.save(best_loss_file, best_loss)
+            
+       if best_loss['val_loss'] > history.history['val_loss'][0]:
+            best_loss['val_loss'] = history.history['val_loss'][0]
+            model.save_weights('train_result/trained_best_in_val.h5')
+            np.save(best_loss_file, best_loss)
+                 
+       pure_test(78, score_threshold=0.1, iou_threshold=0.9)
     
 def _main(args):
     anchors = YOLO_ANCHORS
@@ -265,15 +332,16 @@ def _main(args):
     #     loss = model.train_on_batch(
     #         [image_data, boxes, detectors_mask, matching_true_boxes],
     #         np.zeros(len(image_data)))
-    for cnt in range(2):
+    for cnt in range(3):
         history = model.fit([image_data, boxes_data, detectors_mask, matching_true_boxes],
                   np.zeros(len(image_data)),
                   batch_size=30,
                   epochs=num_steps,
-                  validation_split = 0.2,
+                  validation_split = 0.1,
                   callbacks=[logging, checkpoint, early_stopping])
         model.save_weights(latest_weight_file)
         
+        print (history.history)
         # save best
         if best_loss['train_loss'] > history.history['loss'][0]:
             best_loss['train_loss'] = history.history['loss'][0]
@@ -309,6 +377,7 @@ def _main(args):
         #model_body.load_weights('trained_stage_3_best.h5')
         model_body.load_weights(latest_weight_file)
         #model_body.load_weights('overfit_weights.h5')
+        model_body.save('generated_models/try.h5')
         
         # save trained model
         #save_trained_model(model_body)
@@ -688,8 +757,8 @@ def get_detector_mask(boxes, anchors):
     detectors_mask = [0 for i in range(len(boxes))]
     matching_true_boxes = [0 for i in range(len(boxes))]
     for i, box in enumerate(boxes):
-        print(i)
-        print(box)
+        # print(i)
+        # print(box)
         detectors_mask[i], matching_true_boxes[i] = preprocess_true_boxes(box, anchors, [416, 416])
         
     return np.array(detectors_mask), np.array(matching_true_boxes)

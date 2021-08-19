@@ -20,6 +20,12 @@ from my_utils.keras_darknet19 import (DarknetConv2D, DarknetConv2D_BN_Leaky,
 import tensorflow as tf
 import numpy as np
 
+YOLO_ANCHORS = np.array(
+    ((0.57273, 0.677385), (1.87446, 2.06253), (3.33843, 5.47434),
+     (7.88282, 3.52778), (9.77052, 9.16828)))
+
+CLASS_NUM = 20
+
 
 # def MyYolo(input_shape = (608, 608, 3)):
 #     X_input = Input(input_shape)
@@ -190,6 +196,24 @@ def yolo_boxes_to_corners(box_xy, box_wh):
         box_maxes[..., 1:2],  # y_max
         box_maxes[..., 0:1]  # x_max
     ])
+
+def yolo_box_translate(yolo_output):
+    yolo_output_shape = K.shape(yolo_output)
+    pred_xy, pred_wh, pred_confidence, pred_class_prob = yolo_head(yolo_output, YOLO_ANCHORS, CLASS_NUM)
+    boxes = yolo_boxes_to_corners(pred_xy, pred_wh)
+    box_scores = pred_confidence * pred_class_prob
+
+    print(boxes.shape)
+    print(pred_confidence.shape)
+    print(pred_class_prob.shape)
+    
+    box_class_scores = K.max(box_scores, axis=-1, keepdims=True)
+    box_classes = K.cast(K.expand_dims(K.argmax(box_scores, axis=-1)), K.dtype(box_class_scores))
+    print("--------output---------")
+    print(box_class_scores.shape)
+    print(box_classes.shape)
+    print(K.concatenate([boxes, box_class_scores, box_classes]).shape)
+    return K.concatenate([boxes, box_class_scores, box_classes])
 
 def yolo_loss(args, anchors, num_classes, rescore_confidence=False, print_loss=False):
     (yolo_output, true_boxes, detectors_mask, matching_true_boxes) = args

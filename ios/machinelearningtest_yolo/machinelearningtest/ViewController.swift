@@ -29,7 +29,7 @@ class ViewController: UIViewController, AVCapturePhotoCaptureDelegate {
     @IBOutlet weak var samplepic4: UIImageView!
     @IBOutlet weak var samplepic5: UIImageView!
     
-    var binary_model = myTrained()
+    var binary_model = yolo() // myTrained()
     var captureSession: AVCaptureSession!
     var stillImageOutput: AVCapturePhotoOutput!
     var videoPreviewLayer: AVCaptureVideoPreviewLayer!
@@ -50,8 +50,32 @@ class ViewController: UIViewController, AVCapturePhotoCaptureDelegate {
         4: "lapras:  ",
         5: "mewtwo:  "
     ]
+    let classes_mapping = [0: "aeroplane",
+                           1: "bicycle",
+                           2: "bird",
+                           3: "boat",
+                           4: "bottle",
+                           5: "bus",
+                           6: "car",
+                           7: "cat",
+                           8: "chair",
+                           9: "cow",
+                           10: "diningtable",
+                           11: "dog",
+                           12: "horse",
+                           13: "motorbike",
+                           14: "person",
+                           15: "pottedplant",
+                           16: "sheep",
+                           17: "sofa",
+                           18: "train",
+                           19: "tvmonitor"]
+    
     var result_ui_mapping = [NSInteger: UITextView]()
     var triggeredByCamera = false
+    let resizeEnforce:CGFloat = 416
+    let CONFINDENCE_INDEX = 4
+    let CLASS_INDEX = 5
     
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -74,14 +98,15 @@ class ViewController: UIViewController, AVCapturePhotoCaptureDelegate {
         // test code
 
         let my_image = UIImage(named: "images/try_mew2.jpg")
-        print(my_image)
+        print(my_image as Any)
         capturedPreviewImage.image = my_image
 //        let resized_image = resizeImage(image: my_image!, newWidth: 64, newHeight: 64)
 //        print(resized_image)
 //        let imageView = UIImageView(image: my_image)
-//        imageView.frame = CGRect(x: 800, y: 30, width: 150, height: 150)
+//        imageView.frame = CGRect(x: 800m, y: 30, width: 150, height: 150)
 //        self.view.addSubview(imageView)
-         let my_prediction = doPredictFromImage(underPredictImage: my_image!)
+        let my_prediction = doPredictFromImage(underPredictImage: my_image!)
+        yolo_predict_filter(predicted_result: my_prediction!, score_threshold: 0.31, iou_threshold: 0.6)
          showInUI(myIdentity: my_prediction!)
     
         samplepic0.image = UIImage(named: "images/no0.png")
@@ -134,11 +159,30 @@ class ViewController: UIViewController, AVCapturePhotoCaptureDelegate {
         }
     }
     
+    func yolo_predict_filter(predicted_result: MLMultiArray, score_threshold: Float, iou_threshold: Float){
+        let predict_shape = predicted_result.shape
+        for grid_width in 0...predict_shape[1].intValue-1{
+            print(grid_width)
+            for grid_height in 0...predict_shape[2].intValue-1{
+                for anchor in 0...predict_shape[3].intValue-1 {
+                    let confidence_key = [0, grid_width, grid_height, anchor, CONFINDENCE_INDEX] as [NSNumber]
+                    let confidence_score = predicted_result[confidence_key]
+                    if (Float(confidence_score) >= score_threshold){
+                        print("-----%f--", confidence_score)
+                        let class_key = [0, grid_width, grid_height, anchor, CLASS_INDEX] as [NSNumber]
+                        let class_type = predicted_result[class_key]
+                        print(classes_mapping[class_type.intValue])
+                    }
+                }
+            }
+        }
+    }
+    
     func doPredictFromImage(underPredictImage: UIImage)-> MLMultiArray?{
-        let resized_image = resizeImage(image: underPredictImage, newWidth: 64, newHeight: 64)
+        let resized_image = resizeImage(image: underPredictImage, newWidth: resizeEnforce, newHeight: resizeEnforce)
         var mlinputarray = resized_image.getPixelArray()
 //        var test = resized_image.pixelBuffer(width: 64, height: 64)
-        var input_value = myTrainedInput(input_1: mlinputarray)
+        var input_value = yoloInput(input_5: mlinputarray)//myTrainedInput(input_1: mlinputarray)
         let my_prediction = try? binary_model.prediction(input: input_value)
         print(my_prediction?.Identity)
         return my_prediction!.Identity

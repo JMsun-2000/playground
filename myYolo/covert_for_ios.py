@@ -88,7 +88,7 @@ loaded_model.save('try.h5')
 # convert
 output_labels = ['0', '1', '2', '3', '4', '5']
 # your_model=coremltools.convert(loaded_model, source="tensorflow")
-your_model = coremltools.convert('generated_models/try.h5', source='tensorflow')
+your_model = coremltools.convert('generated_models/try2.h5', source='tensorflow')
 your_model = coremltools.converters.keras.convert(model_body)
 # your_model = coremltools.converters.keras.convert('generated_models/try.h5')
 #your_model = coremltools.converters.keras.convert('try.h5', input_names=['image'], output_names=['output'], class_labels=output_labels, image_input_names='image')
@@ -98,7 +98,7 @@ your_model = coremltools.converters.keras.convert(model_body)
 # your_model.input_description['image'] = 'Takes as input an image'
 # your_model.output_description['output'] = 'Prediction of Digit'
 
-your_model.save('generated_models/try.mlmodel')
+your_model.save('generated_models/yolo.mlmodel')
 
 # spec = coremltools.utils.load_spec("try.mlmodel")
 

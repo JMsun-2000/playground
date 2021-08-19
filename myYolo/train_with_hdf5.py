@@ -24,7 +24,7 @@ from tensorflow.keras.layers import Lambda, Conv2D
 from tensorflow.keras.models import load_model, Model
 from keras.callbacks import TensorBoard, ModelCheckpoint, EarlyStopping
 
-from my_yolo import (YoloBody, yolo_loss, preprocess_true_boxes, yolo_head, yolo_eval, yolo_eval_with_sess)
+from my_yolo import (YoloBody, yolo_loss, preprocess_true_boxes, yolo_head, yolo_eval, yolo_eval_with_sess, yolo_box_translate)
 from my_utils.draw_boxes import draw_boxes
 import tensorflow as tf
 # import tensorflow.compat.v1 as tf
@@ -167,7 +167,7 @@ def pure_test(pic_num, score_threshold = 0.3, iou_threshold = 0.7):
     class_names = get_classes('model_data/pascal_classes.txt')
     data_path = "train_data/pascal_voc_07_12.hdf5"
     voc = h5py.File(data_path, 'r')
-    model_body, model = create_model(anchors, class_names, False, False)
+    model_body, model, ios_model = create_model(anchors, class_names, False, False)
     
     # overfit
     model_body.load_weights('train_result/trained_overfit.h5')
@@ -177,11 +177,11 @@ def pure_test(pic_num, score_threshold = 0.3, iou_threshold = 0.7):
     do_predict(model_body, class_names, anchors, test_data, print_size_limit=800., score_threshold=score_threshold, iou_threshold=iou_threshold)
     
     # val_best
-    model_body.load_weights('train_result/trained_best_in_val.h5')
-    test_data = PIL.Image.open(io.BytesIO(voc['train/images'][pic_num]))
-    #test_data = PIL.Image.open('test_me.jpg')
+    model_body.load_weights('train_result/latest_weight.h5')
+    #test_data = PIL.Image.open(io.BytesIO(voc['train/images'][pic_num]))
+    test_data = PIL.Image.open('try_mew2.jpg')
     print('best in val')
-    do_predict(model_body, class_names, anchors, test_data, print_size_limit=800., score_threshold=score_threshold, iou_threshold=iou_threshold)
+    do_predict(model_body, class_names, anchors, test_data, print_size_limit=1200., score_threshold=0.3, iou_threshold=1.0)
     
     
 CONVERTED_TRAIN_DATA_PATH = 'train_data/converted_pascal_voc_07_12.hdf5'
@@ -279,7 +279,7 @@ def _main(args):
     
     detectors_mask, matching_true_boxes = get_detector_mask(boxes_data, anchors)
     
-    model_body, model = create_model(anchors, class_names, False, False)
+    model_body, model, ios_model = create_model(anchors, class_names, False, False)
     
     if os.path.isfile(latest_weight_file):    
         model.load_weights(latest_weight_file)
@@ -376,8 +376,10 @@ def _main(args):
         # model.load_weights(weights_name)
         #model_body.load_weights('trained_stage_3_best.h5')
         model_body.load_weights(latest_weight_file)
+        #model_body.save('generated_models/try.h5')
         #model_body.load_weights('overfit_weights.h5')
-        model_body.save('generated_models/try.h5')
+        ios_model.load_weights(latest_weight_file)
+        ios_model.save('generated_models/try2.h5')
         
         # save trained model
         #save_trained_model(model_body)
@@ -406,6 +408,8 @@ def do_predict(model_body, class_names, anchors, test_data, print_size_limit=102
     sample_image = np.expand_dims(image_for_predict, axis=0)
     
     predicted_result = model_body.predict(sample_image)
+    print(predicted_result[0,0,0,:])
+    print(predicted_result[0,0,1,:])
     
     predicted_out_put = yolo_predict_head(predicted_result, anchors, len(class_names))
     
@@ -587,9 +591,18 @@ def yolo_predicted_eval(yolo_outputs,
     box_xy, box_wh, box_confidence, box_class_probs = yolo_outputs
     # boxes to corners
     boxes = predicted_boxes_to_corners(box_xy, box_wh)
+    print ("--------before--------")
+    print(boxes.shape)
+    print(box_confidence.shape)
+    print(box_class_probs.shape)
+    print ("--------after---------")
     # yolo filter boxes
     boxes, scores, classes = filter_predicted_boxes(
         boxes, box_confidence, box_class_probs, threshold=score_threshold)
+    
+    print(boxes)
+    print(scores)
+    print(classes)
     
     width = float(image_shape[0])
     height = float(image_shape[1])
@@ -609,11 +622,21 @@ def filter_predicted_boxes(boxes, box_confidence, box_class_probs, threshold=.6)
     box_classes = K.argmax(box_scores, axis=-1)
     box_class_scores = K.max(box_scores, axis=-1)
     prediction_mask = box_class_scores >= threshold
+    
+    print(box_scores.shape)
+    print(box_classes.shape)
+    print(box_class_scores.shape)
+    print(prediction_mask.shape)
 
     # TODO: Expose tf.boolean_mask to Keras backend?
     boxes = tf.boolean_mask(boxes, prediction_mask)
     scores = tf.boolean_mask(box_class_scores, prediction_mask)
     classes = tf.boolean_mask(box_classes, prediction_mask)
+    
+    print("-------out-------")
+    print(boxes.shape)
+    print(scores.shape)
+    print(classes.shape)
     return boxes, scores, classes
     
 def predicted_boxes_to_corners(box_xy, box_wh):
@@ -844,7 +867,10 @@ def create_model(anchors, class_names, load_pretrained=True, freeze_body=True):
         [model_body.input, boxes_input, detectors_mask_input,
          matching_boxes_input], model_loss)
     
-    return model_body, model
+    ios_layer = Lambda(yolo_box_translate, output_shape=(3,), name='yolo_ios')(model_body.output)
+    model_ios = Model(image_input, ios_layer)
+    
+    return model_body, model, model_ios
 
 class YoloLossLayer(tf.keras.layers.Layer):
     def __init__(self, name='yolo_loss', **kwargs):

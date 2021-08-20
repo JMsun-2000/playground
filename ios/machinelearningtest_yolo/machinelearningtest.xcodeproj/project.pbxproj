@@ -17,6 +17,7 @@
 		B857570725782DCA0087399F /* images in Resources */ = {isa = PBXBuildFile; fileRef = B857570625782DCA0087399F /* images */; };
 		B8575729257BE9BA0087399F /* CameraView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B8575728257BE9BA0087399F /* CameraView.swift */; };
 		B8762C8826CAEC760075DB6B /* yolo.mlmodel in Sources */ = {isa = PBXBuildFile; fileRef = B8762C8726CAEC760075DB6B /* yolo.mlmodel */; };
+		B8762C9526D03E280075DB6B /* PredictedBox.swift in Sources */ = {isa = PBXBuildFile; fileRef = B8762C9426D03E270075DB6B /* PredictedBox.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -32,6 +33,7 @@
 		B857570625782DCA0087399F /* images */ = {isa = PBXFileReference; lastKnownFileType = folder; path = images; sourceTree = "<group>"; };
 		B8575728257BE9BA0087399F /* CameraView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraView.swift; sourceTree = "<group>"; };
 		B8762C8726CAEC760075DB6B /* yolo.mlmodel */ = {isa = PBXFileReference; lastKnownFileType = file.mlmodel; path = yolo.mlmodel; sourceTree = "<group>"; };
+		B8762C9426D03E270075DB6B /* PredictedBox.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PredictedBox.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -66,6 +68,7 @@
 			children = (
 				B857570625782DCA0087399F /* images */,
 				B85756E62568A7A30087399F /* AppDelegate.swift */,
+				B8762C9426D03E270075DB6B /* PredictedBox.swift */,
 				B8575728257BE9BA0087399F /* CameraView.swift */,
 				B85756E82568A7A30087399F /* SceneDelegate.swift */,
 				B85756EA2568A7A30087399F /* ViewController.swift */,
@@ -153,6 +156,7 @@
 			files = (
 				B8762C8826CAEC760075DB6B /* yolo.mlmodel in Sources */,
 				B85756EB2568A7A30087399F /* ViewController.swift in Sources */,
+				B8762C9526D03E280075DB6B /* PredictedBox.swift in Sources */,
 				B8575729257BE9BA0087399F /* CameraView.swift in Sources */,
 				B85757052578252F0087399F /* UIImage+CVPixelBuffer.swift in Sources */,
 				B85756E72568A7A30087399F /* AppDelegate.swift in Sources */,

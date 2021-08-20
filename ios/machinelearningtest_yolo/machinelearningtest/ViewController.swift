@@ -12,6 +12,7 @@ import Vision
 import AVFoundation
 
 
+
 class ViewController: UIViewController, AVCapturePhotoCaptureDelegate {
     @IBOutlet weak var videoView: UIView!
     @IBOutlet weak var predictResultView0: UITextView!
@@ -50,32 +51,58 @@ class ViewController: UIViewController, AVCapturePhotoCaptureDelegate {
         4: "lapras:  ",
         5: "mewtwo:  "
     ]
-    let classes_mapping = [0: "aeroplane",
-                           1: "bicycle",
-                           2: "bird",
-                           3: "boat",
-                           4: "bottle",
-                           5: "bus",
-                           6: "car",
-                           7: "cat",
-                           8: "chair",
-                           9: "cow",
-                           10: "diningtable",
-                           11: "dog",
-                           12: "horse",
-                           13: "motorbike",
-                           14: "person",
-                           15: "pottedplant",
-                           16: "sheep",
-                           17: "sofa",
-                           18: "train",
-                           19: "tvmonitor"]
+    let classes_mapping = ["aeroplane",
+                           "bicycle",
+                           "bird",
+                           "boat",
+                           "bottle",
+                           "bus",
+                           "car",
+                           "cat",
+                           "chair",
+                           "cow",
+                           "diningtable",
+                           "dog",
+                           "horse",
+                           "motorbike",
+                           "person",
+                           "pottedplant",
+                           "sheep",
+                           "sofa",
+                           "train",
+                           "tvmonitor"]
+    let color_mapping = [CGColor(red: 0.0, green: 0.7, blue: 1.0, alpha: 1.0),
+                         CGColor(red: 1.0, green: 0.6, blue: 0.0, alpha: 1.0),
+                         CGColor(red: 0.2, green: 1.0, blue: 0.0, alpha: 1.0),
+                         CGColor(red: 0.0, green: 0.4, blue: 1.0, alpha: 1.0),
+                         CGColor(red: 1.0, green: 0.3, blue: 0.0, alpha: 1.0),
+                         CGColor(red: 0.8, green: 0.0, blue: 1.0, alpha: 1.0),
+                         CGColor(red: 1.0, green: 0.0, blue: 0.3, alpha: 1.0),
+                         CGColor(red: 0.8, green: 1.0, blue: 0.0, alpha: 1.0),
+                         CGColor(red: 0.5, green: 0.0, blue: 1.0, alpha: 1.0),
+                         CGColor(red: 0.0, green: 1.0, blue: 0.7, alpha: 1.0),
+                         CGColor(red: 1.0, green: 0.9, blue: 0.0, alpha: 1.0),
+                         CGColor(red: 0.0, green: 1.0, blue: 1.0, alpha: 1.0),
+                         CGColor(red: 0.0, green: 0.1, blue: 1.0, alpha: 1.0),
+                         CGColor(red: 0.0, green: 1.0, blue: 0.4, alpha: 1.0),
+                         CGColor(red: 1.0, green: 0.0, blue: 0.9, alpha: 1.0),
+                         CGColor(red: 0.0, green: 1.0, blue: 0.1, alpha: 1.0),
+                         CGColor(red: 0.5, green: 1.0, blue: 0.0, alpha: 1.0),
+                         CGColor(red: 0.2, green: 0.0, blue: 1.0, alpha: 1.0),
+                         CGColor(red: 1.0, green: 0.0, blue: 0.6, alpha: 1.0),
+                         CGColor(red: 1.0, green: 0.0, blue: 0.0, alpha: 1.0)]
+
     
     var result_ui_mapping = [NSInteger: UITextView]()
     var triggeredByCamera = false
     let resizeEnforce:CGFloat = 416
     let CONFINDENCE_INDEX = 4
     let CLASS_INDEX = 5
+    let Y_MIN_INDEX = 0
+    let X_MIN_INDEX = 1
+    let Y_MAX_INDEX = 2
+    let X_MAX_INDEX = 3
+
     
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -99,16 +126,16 @@ class ViewController: UIViewController, AVCapturePhotoCaptureDelegate {
 
         let my_image = UIImage(named: "images/try_mew2.jpg")
         print(my_image as Any)
-        capturedPreviewImage.image = my_image
+        
 //        let resized_image = resizeImage(image: my_image!, newWidth: 64, newHeight: 64)
 //        print(resized_image)
 //        let imageView = UIImageView(image: my_image)
 //        imageView.frame = CGRect(x: 800m, y: 30, width: 150, height: 150)
 //        self.view.addSubview(imageView)
         let my_prediction = doPredictFromImage(underPredictImage: my_image!)
-        yolo_predict_filter(predicted_result: my_prediction!, score_threshold: 0.31, iou_threshold: 0.6)
-         showInUI(myIdentity: my_prediction!)
-    
+        let filterd_result = yolo_predict_filter(predicted_result: my_prediction!, score_threshold: 0.31, iou_threshold: 0.6)
+//         showInUI(myIdentity: my_prediction!)
+        capturedPreviewImage.image = drawBoxesOnImage(image: my_image!, pboxes: filterd_result)
         samplepic0.image = UIImage(named: "images/no0.png")
         samplepic1.image = UIImage(named: "images/no1.png")
         samplepic2.image = UIImage(named: "images/no2.png")
@@ -159,23 +186,38 @@ class ViewController: UIViewController, AVCapturePhotoCaptureDelegate {
         }
     }
     
-    func yolo_predict_filter(predicted_result: MLMultiArray, score_threshold: Float, iou_threshold: Float){
+    func yolo_predict_filter(predicted_result: MLMultiArray, score_threshold: Float, iou_threshold: Float) -> Array<PredictedBox>{
         let predict_shape = predicted_result.shape
+        var filtered_boxes: Array<PredictedBox> = Array()
         for grid_width in 0...predict_shape[1].intValue-1{
-            print(grid_width)
+//            print(grid_width)
             for grid_height in 0...predict_shape[2].intValue-1{
                 for anchor in 0...predict_shape[3].intValue-1 {
                     let confidence_key = [0, grid_width, grid_height, anchor, CONFINDENCE_INDEX] as [NSNumber]
                     let confidence_score = predicted_result[confidence_key]
                     if (Float(confidence_score) >= score_threshold){
-                        print("-----%f--", confidence_score)
+//                        print("-----%f--", confidence_score)
                         let class_key = [0, grid_width, grid_height, anchor, CLASS_INDEX] as [NSNumber]
                         let class_type = predicted_result[class_key]
-                        print(classes_mapping[class_type.intValue])
+//                        print(classes_mapping[class_type.intValue])
+                        let ymin_key = [0, grid_width, grid_height, anchor, Y_MIN_INDEX] as [NSNumber]
+                        let xmin_key = [0, grid_width, grid_height, anchor, X_MIN_INDEX] as [NSNumber]
+                        let ymax_key = [0, grid_width, grid_height, anchor, Y_MAX_INDEX] as [NSNumber]
+                        let xmax_key = [0, grid_width, grid_height, anchor, X_MAX_INDEX] as [NSNumber]
+                        let cur_box = PredictedBox()
+                        cur_box.p_class = class_type.intValue
+                        cur_box.p_scorce = Float(confidence_score)
+                        cur_box.x_min = Float(predicted_result[xmin_key])
+                        cur_box.y_min = Float(predicted_result[ymin_key])
+                        cur_box.x_max = Float(predicted_result[xmax_key])
+                        cur_box.y_max = Float(predicted_result[ymax_key])
+                        print(confidence_score, classes_mapping[class_type.intValue], Float(predicted_result[xmin_key])*924, Float(predicted_result[ymin_key])*1100, Float(predicted_result[xmax_key])*924, Float(predicted_result[ymax_key])*1100)
+                        filtered_boxes.append(cur_box)
                     }
                 }
             }
         }
+        return filtered_boxes
     }
     
     func doPredictFromImage(underPredictImage: UIImage)-> MLMultiArray?{
@@ -342,6 +384,23 @@ class ViewController: UIViewController, AVCapturePhotoCaptureDelegate {
         let newImage = UIGraphicsGetImageFromCurrentImageContext()!
         UIGraphicsEndImageContext()
 
+        return newImage
+    }
+    
+    func drawBoxesOnImage(image: UIImage, pboxes: Array<PredictedBox>) -> UIImage {
+        UIGraphicsBeginImageContext(image.size)
+        let context = UIGraphicsGetCurrentContext()
+        image.draw(at: CGPoint.zero)
+        for cur_box in pboxes{
+            let rectangle_show = cur_box.printRectangle(canvasSize: image.size)
+            context!.setStrokeColor(color_mapping[cur_box.p_class])
+            context!.setLineWidth(5)
+            context!.addRect(rectangle_show)
+            context!.drawPath(using: .stroke)
+        }
+        
+        let newImage = UIGraphicsGetImageFromCurrentImageContext()!
+        UIGraphicsEndImageContext()
         return newImage
     }
 //    public func preprocess(image: UIImage, width: Int, height: Int) -> MLMultiArray? {

@@ -3,27 +3,30 @@
    version = "1.0">
    <ContextStates>
       <ContextState
-         contextName = "ViewController.doPredictFromImage(underPredictImage:):ViewController.swift">
+         contextName = "ViewController.photoOutput(_:didFinishProcessingPhoto:error:):ViewController.swift">
          <PersistentStrings>
             <PersistentString
-               value = "test[0]">
+               value = "videoView.frame">
             </PersistentString>
             <PersistentString
-               value = "my_prediction?.Identity">
+               value = "videoView.bounds">
             </PersistentString>
          </PersistentStrings>
       </ContextState>
       <ContextState
-         contextName = "ViewController.viewDidLoad():ViewController.swift">
+         contextName = "ViewController.showInUI(myIdentity:):ViewController.swift">
          <PersistentStrings>
             <PersistentString
-               value = "my_prediction[[0,0,0,0,0]]">
+               value = "myIdentity.subscript(0)">
             </PersistentString>
             <PersistentString
-               value = "my_prediction">
+               value = "myIdentity[[0, 0, 0, 0]]">
             </PersistentString>
             <PersistentString
-               value = "my_image?.cgImage">
+               value = "result_ui_mapping">
+            </PersistentString>
+            <PersistentString
+               value = "myIdentity.shape">
             </PersistentString>
          </PersistentStrings>
       </ContextState>
@@ -36,16 +39,24 @@
          </PersistentStrings>
       </ContextState>
       <ContextState
-         contextName = "UIImage.getPixelColor(pos:):UIImage+CVPixelBuffer.swift">
+         contextName = "ViewController.resizeImage(image:newWidth:newHeight:):ViewController.swift">
          <PersistentStrings>
             <PersistentString
-               value = "data[16130]">
+               value = "image.size">
             </PersistentString>
+         </PersistentStrings>
+      </ContextState>
+      <ContextState
+         contextName = "UIImage.getPixelColor(pos:):UIImage+CVPixelBuffer.swift">
+         <PersistentStrings>
             <PersistentString
                value = "data[16128]">
             </PersistentString>
             <PersistentString
                value = "data[16129]">
+            </PersistentString>
+            <PersistentString
+               value = "data[16130]">
             </PersistentString>
          </PersistentStrings>
       </ContextState>
@@ -77,30 +88,33 @@
          </PersistentStrings>
       </ContextState>
       <ContextState
-         contextName = "ViewController.photoOutput(_:didFinishProcessingPhoto:error:):ViewController.swift">
+         contextName = "ViewController.viewDidLoad():ViewController.swift">
          <PersistentStrings>
             <PersistentString
-               value = "videoView.frame">
+               value = "my_image.size">
             </PersistentString>
             <PersistentString
-               value = "videoView.bounds">
+               value = "my_image?.cgImage">
+            </PersistentString>
+            <PersistentString
+               value = "my_prediction[[0,0,0,0,0]]">
+            </PersistentString>
+            <PersistentString
+               value = "my_prediction">
+            </PersistentString>
+            <PersistentString
+               value = "capturedPreviewImage">
             </PersistentString>
          </PersistentStrings>
       </ContextState>
       <ContextState
-         contextName = "ViewController.showInUI(myIdentity:):ViewController.swift">
+         contextName = "ViewController.doPredictFromImage(underPredictImage:):ViewController.swift">
          <PersistentStrings>
             <PersistentString
-               value = "myIdentity.subscript(0)">
+               value = "test[0]">
             </PersistentString>
             <PersistentString
-               value = "result_ui_mapping">
-            </PersistentString>
-            <PersistentString
-               value = "myIdentity[[0, 0, 0, 0]]">
-            </PersistentString>
-            <PersistentString
-               value = "myIdentity.shape">
+               value = "my_prediction?.Identity">
             </PersistentString>
          </PersistentStrings>
       </ContextState>

@@ -51,26 +51,7 @@ class ViewController: UIViewController, AVCapturePhotoCaptureDelegate {
         4: "lapras:  ",
         5: "mewtwo:  "
     ]
-    let classes_mapping = ["aeroplane",
-                           "bicycle",
-                           "bird",
-                           "boat",
-                           "bottle",
-                           "bus",
-                           "car",
-                           "cat",
-                           "chair",
-                           "cow",
-                           "diningtable",
-                           "dog",
-                           "horse",
-                           "motorbike",
-                           "person",
-                           "pottedplant",
-                           "sheep",
-                           "sofa",
-                           "train",
-                           "tvmonitor"]
+
     let color_mapping = [CGColor(red: 0.0, green: 0.7, blue: 1.0, alpha: 1.0),
                          CGColor(red: 1.0, green: 0.6, blue: 0.0, alpha: 1.0),
                          CGColor(red: 0.2, green: 1.0, blue: 0.0, alpha: 1.0),
@@ -206,18 +187,50 @@ class ViewController: UIViewController, AVCapturePhotoCaptureDelegate {
                         let xmax_key = [0, grid_width, grid_height, anchor, X_MAX_INDEX] as [NSNumber]
                         let cur_box = PredictedBox()
                         cur_box.p_class = class_type.intValue
-                        cur_box.p_scorce = Float(confidence_score)
+                        cur_box.p_score = Float(confidence_score)
                         cur_box.x_min = Float(predicted_result[xmin_key])
                         cur_box.y_min = Float(predicted_result[ymin_key])
                         cur_box.x_max = Float(predicted_result[xmax_key])
                         cur_box.y_max = Float(predicted_result[ymax_key])
-                        print(confidence_score, classes_mapping[class_type.intValue], Float(predicted_result[xmin_key])*924, Float(predicted_result[ymin_key])*1100, Float(predicted_result[xmax_key])*924, Float(predicted_result[ymax_key])*1100)
+                        print(confidence_score, class_type.intValue, Float(predicted_result[xmin_key])*924, Float(predicted_result[ymin_key])*1100, Float(predicted_result[xmax_key])*924, Float(predicted_result[ymax_key])*1100)
                         filtered_boxes.append(cur_box)
                     }
                 }
             }
         }
+        
+        filtered_boxes = IOUFilter(boxArray: filtered_boxes, iou_threshold: 0.7)
+        
         return filtered_boxes
+    }
+    
+    func IOUFilter(boxArray: Array<PredictedBox>, iou_threshold: Float = 0.6, max_boxes: Int = 10)-> Array<PredictedBox>{
+        var IOUed_boxes: Array<PredictedBox> = Array()
+//        debugPrintScore(need_print: boxArray)
+        let sortedArray = boxArray.sorted(by: {$0.p_score > $1.p_score})
+//        debugPrintScore(need_print: sortedArray)
+        
+        for source_box in sortedArray {
+            var over_IOU = false
+            for target_box in IOUed_boxes {
+                let iou_score = target_box.iouScore(compared_box: source_box)
+                if iou_score > iou_threshold {
+                    over_IOU = true
+                    break
+                }
+            }
+            
+            // not over IOU, should be an object
+            if !over_IOU {
+                IOUed_boxes.append(source_box)
+                if IOUed_boxes.count >= max_boxes {
+                    break
+                }
+            }
+        }
+        
+        
+        return IOUed_boxes
     }
     
     func doPredictFromImage(underPredictImage: UIImage)-> MLMultiArray?{
@@ -391,41 +404,32 @@ class ViewController: UIViewController, AVCapturePhotoCaptureDelegate {
         UIGraphicsBeginImageContext(image.size)
         let context = UIGraphicsGetCurrentContext()
         image.draw(at: CGPoint.zero)
+        let textFont = UIFont(name: "Helvetica Bold", size: 40)!
         for cur_box in pboxes{
             let rectangle_show = cur_box.printRectangle(canvasSize: image.size)
             context!.setStrokeColor(color_mapping[cur_box.p_class])
             context!.setLineWidth(5)
             context!.addRect(rectangle_show)
             context!.drawPath(using: .stroke)
+            let textFontAttributes = [
+                NSAttributedString.Key.font: textFont,
+                NSAttributedString.Key.foregroundColor: UIColor(cgColor: color_mapping[cur_box.p_class])
+            ] as [NSAttributedString.Key : Any]
+            let class_text = " " + cur_box.classText()
+            class_text.draw(in: rectangle_show, withAttributes: textFontAttributes)
         }
         
         let newImage = UIGraphicsGetImageFromCurrentImageContext()!
         UIGraphicsEndImageContext()
         return newImage
     }
-//    public func preprocess(image: UIImage, width: Int, height: Int) -> MLMultiArray? {
-//        let size = CGSize(width: width, height: height)
-//
-//
-//        guard let pixels = try? image.pixelData().map({ (Double($0) / 255.0) }) else {
-//            return nil
-//        }
-//
-//        guard let array = try? MLMultiArray(shape: [3, height, width] as [NSNumber], dataType: .double) else {
-//            return nil
-//        }
-//
-//        let r = pixels.enumerated().filter { $0.offset % 4 == 0 }.map { $0.element }
-//        let g = pixels.enumerated().filter { $0.offset % 4 == 1 }.map { $0.element }
-//        let b = pixels.enumerated().filter { $0.offset % 4 == 2 }.map { $0.element }
-//
-//        let combination = r + g + b
-//        for (index, element) in combination.enumerated() {
-//            array[index] = NSNumber(value: element)
-//        }
-//
-//        return array
-//    }
+
+    func debugPrintScore(need_print: Array<PredictedBox>){
+        print("Print array:", need_print)
+        for element in need_print {
+            print(element.p_score)
+        }
+    }
 
 }
 

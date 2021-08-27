@@ -279,6 +279,9 @@ class ViewController: UIViewController, AVCapturePhotoCaptureDelegate {
             triggeredByCamera = false
         }
         let my_prediction = doPredictFromImage(underPredictImage: getimage!)
+        let filterd_result = yolo_predict_filter(predicted_result: my_prediction!, score_threshold: 0.31, iou_threshold: 0.6)
+//         showInUI(myIdentity: my_prediction!)
+        boxesView.drawBoxesOnMe(pboxes: filterd_result)
         showInUI(myIdentity: my_prediction!)
     }
     

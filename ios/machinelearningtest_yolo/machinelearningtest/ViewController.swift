@@ -15,20 +15,11 @@ import AVFoundation
 
 class ViewController: UIViewController, AVCapturePhotoCaptureDelegate {
     @IBOutlet weak var videoView: UIView!
-    @IBOutlet weak var predictResultView0: UITextView!
-    @IBOutlet weak var predictResultView1: UITextView!
-    @IBOutlet weak var predictResultView2: UITextView!
-    @IBOutlet weak var predictResultView3: UITextView!
-    @IBOutlet weak var predictResultView4: UITextView!
-    @IBOutlet weak var predictResultView5: UITextView!
     @IBOutlet weak var takePhotoButton: UIButton!
     @IBOutlet weak var capturedPreviewImage: UIImageView!
-    @IBOutlet weak var samplepic0: UIImageView!
-    @IBOutlet weak var samplepic1: UIImageView!
-    @IBOutlet weak var samplepic2: UIImageView!
-    @IBOutlet weak var samplepic3: UIImageView!
-    @IBOutlet weak var samplepic4: UIImageView!
-    @IBOutlet weak var samplepic5: UIImageView!
+    @IBOutlet weak var boxesView: ShowBoxView!
+   
+
     
     var binary_model = yolo() // myTrained()
     var captureSession: AVCaptureSession!
@@ -87,15 +78,7 @@ class ViewController: UIViewController, AVCapturePhotoCaptureDelegate {
     
     override func viewDidLoad() {
         super.viewDidLoad()
-        // Do any additional setup after loading the view.
-        result_ui_mapping = [
-            0: predictResultView0,
-            1: predictResultView1,
-            2: predictResultView2,
-            3: predictResultView3,
-            4: predictResultView4,
-            5: predictResultView5,
-        ]
+        
         
 //        var my_model = YourNewModel()
 //        print(my_mapping)
@@ -117,12 +100,7 @@ class ViewController: UIViewController, AVCapturePhotoCaptureDelegate {
         let filterd_result = yolo_predict_filter(predicted_result: my_prediction!, score_threshold: 0.31, iou_threshold: 0.6)
 //         showInUI(myIdentity: my_prediction!)
         capturedPreviewImage.image = drawBoxesOnImage(image: my_image!, pboxes: filterd_result)
-        samplepic0.image = UIImage(named: "images/no0.png")
-        samplepic1.image = UIImage(named: "images/no1.png")
-        samplepic2.image = UIImage(named: "images/no2.png")
-        samplepic3.image = UIImage(named: "images/no3.png")
-        samplepic4.image = UIImage(named: "images/no4.png")
-        samplepic5.image = UIImage(named: "images/no5.png")
+       
       /*
         let image_buffer = cvBuffer(from: resized_image)//cvBuffer(from: resized_image)
         //let image_buffer = my_image?.pixelBuffer(width: 64, height: 64)
@@ -146,25 +124,25 @@ class ViewController: UIViewController, AVCapturePhotoCaptureDelegate {
     }
     
     func showInUI(myIdentity: MLMultiArray){
-        var showText = ""
-        var biggest = 0.0
-        var big_index = 0
-        for i in 0...(myIdentity.count)-1{
-            showText = String(format: "%.2f", Float(myIdentity[i])*100.0)+"% "+pokemon_mapping[i]!
-            result_ui_mapping[i]!.text = showText
-            if Double(myIdentity[i]) > biggest{
-                biggest = Double(myIdentity[i])
-                big_index = i
-            }
-        }
-        for i in 0...5 {
-            if i==big_index{
-                result_ui_mapping[i]!.textColor = UIColor.red
-            }
-            else{
-                result_ui_mapping[i]!.textColor = UIColor.black
-            }
-        }
+//        var showText = ""
+//        var biggest = 0.0
+//        var big_index = 0
+//        for i in 0...(myIdentity.count)-1{
+//            showText = String(format: "%.2f", Float(myIdentity[i])*100.0)+"% "+pokemon_mapping[i]!
+//            result_ui_mapping[i]!.text = showText
+//            if Double(myIdentity[i]) > biggest{
+//                biggest = Double(myIdentity[i])
+//                big_index = i
+//            }
+//        }
+//        for i in 0...5 {
+//            if i==big_index{
+//                result_ui_mapping[i]!.textColor = UIColor.red
+//            }
+//            else{
+//                result_ui_mapping[i]!.textColor = UIColor.black
+//            }
+//        }
     }
     
     func yolo_predict_filter(predicted_result: MLMultiArray, score_threshold: Float, iou_threshold: Float) -> Array<PredictedBox>{
@@ -272,6 +250,8 @@ class ViewController: UIViewController, AVCapturePhotoCaptureDelegate {
     }
     
     @objc func autoTakePhoto() {
+        // dispose system shutter sound
+        AudioServicesDisposeSystemSoundID(1108)
         print("auto capture triggered!")
         let settings = AVCapturePhotoSettings(format: [AVVideoCodecKey: AVVideoCodecType.jpeg])
         stillImageOutput.capturePhoto(with: settings, delegate: self)
@@ -283,6 +263,8 @@ class ViewController: UIViewController, AVCapturePhotoCaptureDelegate {
     }
     
     func photoOutput(_ output: AVCapturePhotoOutput, didFinishProcessingPhoto photo: AVCapturePhoto, error: Error?) {
+        // dispose system shutter sound
+        AudioServicesDisposeSystemSoundID(1108)
         
         /* emulator hasn't camera  */
         guard let imageData = photo.fileDataRepresentation()
@@ -303,7 +285,7 @@ class ViewController: UIViewController, AVCapturePhotoCaptureDelegate {
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
         captureSession = AVCaptureSession()
-        captureSession.sessionPreset = .medium
+        captureSession.sessionPreset = .high
         guard let backCamera = AVCaptureDevice.default(for: AVMediaType.video)
             else {
                 print("Unable to access back camera!")
@@ -335,12 +317,18 @@ class ViewController: UIViewController, AVCapturePhotoCaptureDelegate {
         self.captureTimer?.invalidate()
     }
     
+    override func viewWillTransition(to size: CGSize, with coordinator: UIViewControllerTransitionCoordinator) {
+        super.viewWillTransition(to: size, with: coordinator)
+//        videoPreviewLayer.connection?.videoOrientation = UIOrientation_To_AVOrientation(ui: UIDevice.current.orientation)
+    }
+    
     func setupLivePreview() {
         
         videoPreviewLayer = AVCaptureVideoPreviewLayer(session: captureSession)
         
-        videoPreviewLayer.videoGravity = .resizeAspect
-        videoPreviewLayer.connection?.videoOrientation = .portrait
+        videoPreviewLayer.videoGravity = .resizeAspectFill
+        videoPreviewLayer.connection?.videoOrientation = .landscapeRight
+            //UIOrientation_To_AVOrientation(ui: UIDevice.current.orientation)
         videoView.layer.addSublayer(videoPreviewLayer)
         
         //Step12
@@ -431,6 +419,17 @@ class ViewController: UIViewController, AVCapturePhotoCaptureDelegate {
         }
     }
 
+    func UIOrientation_To_AVOrientation(ui:UIDeviceOrientation)-> AVCaptureVideoOrientation{
+        switch ui {
+        case .landscapeLeft:        return .landscapeLeft
+        case .landscapeRight:       return .landscapeRight
+        case .portrait:             return .portrait
+        case .portraitUpsideDown:   return .portraitUpsideDown
+        default:                    return .portrait
+        }
+    }
 }
+
+
 
 

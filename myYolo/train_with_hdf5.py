@@ -13,7 +13,7 @@ Created on Wed Apr 28 10:23:35 2021
 
 @author: sunjim
 """
-
+from random import randrange
 import numpy as np
 import io
 import os
@@ -179,8 +179,8 @@ def pure_test(pic_num, score_threshold = 0.3, iou_threshold = 0.7):
     # val_best
     model_body.load_weights('train_result/latest_weight.h5')
     #test_data = PIL.Image.open(io.BytesIO(voc['train/images'][pic_num]))
-    test_data = PIL.Image.open('try_mew2.jpg')
     print('best in val')
+    test_data = PIL.Image.open('try_mew2.jpg')
     do_predict(model_body, class_names, anchors, test_data, print_size_limit=1200., score_threshold=0.3, iou_threshold=1.0)
     
     
@@ -269,8 +269,13 @@ def _main(args):
     # train_box = np.array([voc['train/boxes'][test_sample_num], voc['train/boxes'][test_sample_num+1]])
     # test end
     
-    train_image = np.array(voc['train/images'][0:3600])
-    train_box = np.array(voc['train/boxes'][0:3600])
+    picked_random_begin = randrange(0, (voc['train/images']).size - 2401)
+    picked_random_end = picked_random_begin+2400
+    
+    print('train from ', picked_random_begin, ' to ', picked_random_end)
+    
+    train_image = np.array(voc['train/images'][picked_random_begin:picked_random_end])
+    train_box = np.array(voc['train/boxes'][picked_random_begin:picked_random_end])
     
     #data = np.array(voc["train"][:]) # custom data saved as a numpy file.
     #  has 2 arrays: an object array 'boxes' (variable length of boxes in each image)
@@ -332,12 +337,12 @@ def _main(args):
     #     loss = model.train_on_batch(
     #         [image_data, boxes, detectors_mask, matching_true_boxes],
     #         np.zeros(len(image_data)))
-    for cnt in range(3):
+    for cnt in range(2):
         history = model.fit([image_data, boxes_data, detectors_mask, matching_true_boxes],
                   np.zeros(len(image_data)),
                   batch_size=30,
                   epochs=num_steps,
-                  validation_split = 0.1,
+                  # validation_split = 0.1,
                   callbacks=[logging, checkpoint, early_stopping])
         model.save_weights(latest_weight_file)
         
@@ -348,10 +353,10 @@ def _main(args):
             model.save_weights('train_result/trained_overfit.h5')
             np.save(best_loss_file, best_loss)
             
-        if best_loss['val_loss'] > history.history['val_loss'][0]:
-            best_loss['val_loss'] = history.history['val_loss'][0]
-            model.save_weights('train_result/trained_best_in_val.h5')
-            np.save(best_loss_file, best_loss)
+        # if best_loss['val_loss'] > history.history['val_loss'][0]:
+        #     best_loss['val_loss'] = history.history['val_loss'][0]
+        #     model.save_weights('train_result/trained_best_in_val.h5')
+        #     np.save(best_loss_file, best_loss)
         
         '''
         try any data
@@ -385,7 +390,7 @@ def _main(args):
         #save_trained_model(model_body)
         
         test_data = PIL.Image.open(io.BytesIO(voc['train/images'][78]))
-        do_predict(model_body, class_names, anchors, test_data, print_size_limit=1200., score_threshold=0.01, iou_threshold=0.9)
+        do_predict(model_body, class_names, anchors, test_data, print_size_limit=1200., score_threshold=0.3, iou_threshold=0.9)
     
 def do_predict(model_body, class_names, anchors, test_data, print_size_limit=1024., score_threshold=0.6, iou_threshold=0.5):
     '''
@@ -408,8 +413,8 @@ def do_predict(model_body, class_names, anchors, test_data, print_size_limit=102
     sample_image = np.expand_dims(image_for_predict, axis=0)
     
     predicted_result = model_body.predict(sample_image)
-    print(predicted_result[0,0,0,:])
-    print(predicted_result[0,0,1,:])
+    # print(predicted_result[0,0,0,:])
+    # print(predicted_result[0,0,1,:])
     
     predicted_out_put = yolo_predict_head(predicted_result, anchors, len(class_names))
     
@@ -455,7 +460,7 @@ def do_predict(model_body, class_names, anchors, test_data, print_size_limit=102
                                                              score_threshold=score_threshold,
                                                              iou_threshold=iou_threshold)
     print('Found {} boxes for image.'.format(len(out_boxes)))
-    print(out_boxes)
+    # print(out_boxes)
     
     # Plot image with predicted boxes.
     image_with_boxes = draw_boxes(image_for_draw, out_boxes, out_classes,
@@ -591,18 +596,18 @@ def yolo_predicted_eval(yolo_outputs,
     box_xy, box_wh, box_confidence, box_class_probs = yolo_outputs
     # boxes to corners
     boxes = predicted_boxes_to_corners(box_xy, box_wh)
-    print ("--------before--------")
-    print(boxes.shape)
-    print(box_confidence.shape)
-    print(box_class_probs.shape)
-    print ("--------after---------")
+    # print ("--------before--------")
+    # print(boxes.shape)
+    # print(box_confidence.shape)
+    # print(box_class_probs.shape)
+    # print ("--------after---------")
     # yolo filter boxes
     boxes, scores, classes = filter_predicted_boxes(
         boxes, box_confidence, box_class_probs, threshold=score_threshold)
     
-    print(boxes)
-    print(scores)
-    print(classes)
+    # print(boxes)
+    # print(scores)
+    # print(classes)
     
     width = float(image_shape[0])
     height = float(image_shape[1])
@@ -623,20 +628,20 @@ def filter_predicted_boxes(boxes, box_confidence, box_class_probs, threshold=.6)
     box_class_scores = K.max(box_scores, axis=-1)
     prediction_mask = box_class_scores >= threshold
     
-    print(box_scores.shape)
-    print(box_classes.shape)
-    print(box_class_scores.shape)
-    print(prediction_mask.shape)
+    # print(box_scores.shape)
+    # print(box_classes.shape)
+    # print(box_class_scores.shape)
+    # print(prediction_mask.shape)
 
     # TODO: Expose tf.boolean_mask to Keras backend?
     boxes = tf.boolean_mask(boxes, prediction_mask)
     scores = tf.boolean_mask(box_class_scores, prediction_mask)
     classes = tf.boolean_mask(box_classes, prediction_mask)
     
-    print("-------out-------")
-    print(boxes.shape)
-    print(scores.shape)
-    print(classes.shape)
+    # print("-------out-------")
+    # print(boxes.shape)
+    # print(scores.shape)
+    # print(classes.shape)
     return boxes, scores, classes
     
 def predicted_boxes_to_corners(box_xy, box_wh):

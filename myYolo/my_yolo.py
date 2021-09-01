@@ -203,16 +203,16 @@ def yolo_box_translate(yolo_output):
     boxes = yolo_boxes_to_corners(pred_xy, pred_wh)
     box_scores = pred_confidence * pred_class_prob
 
-    print(boxes.shape)
-    print(pred_confidence.shape)
-    print(pred_class_prob.shape)
+    # print(boxes.shape)
+    # print(pred_confidence.shape)
+    # print(pred_class_prob.shape)
     
     box_class_scores = K.max(box_scores, axis=-1, keepdims=True)
     box_classes = K.cast(K.expand_dims(K.argmax(box_scores, axis=-1)), K.dtype(box_class_scores))
-    print("--------output---------")
-    print(box_class_scores.shape)
-    print(box_classes.shape)
-    print(K.concatenate([boxes, box_class_scores, box_classes]).shape)
+    # print("--------output---------")
+    # print(box_class_scores.shape)
+    # print(box_classes.shape)
+    # print(K.concatenate([boxes, box_class_scores, box_classes]).shape)
     return K.concatenate([boxes, box_class_scores, box_classes])
 
 def yolo_loss(args, anchors, num_classes, rescore_confidence=False, print_loss=False):

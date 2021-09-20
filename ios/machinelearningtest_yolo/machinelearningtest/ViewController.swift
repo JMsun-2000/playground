@@ -215,7 +215,7 @@ class ViewController: UIViewController, AVCapturePhotoCaptureDelegate {
         let resized_image = resizeImage(image: underPredictImage, newWidth: resizeEnforce, newHeight: resizeEnforce)
         var mlinputarray = resized_image.getPixelArray()
 //        var test = resized_image.pixelBuffer(width: 64, height: 64)
-        var input_value = yoloInput(input_5: mlinputarray)//myTrainedInput(input_1: mlinputarray)
+        var input_value = yoloInput(input_33: mlinputarray)//myTrainedInput(input_1: mlinputarray)
         let my_prediction = try? binary_model.prediction(input: input_value)
         print(my_prediction?.Identity)
         return my_prediction!.Identity

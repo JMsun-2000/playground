@@ -33,6 +33,7 @@ import tensorflow as tf
 from tensorflow.keras import backend as K
 import matplotlib.pyplot as plt
 import coremltools
+import math
 
 
 # Default anchor boxes
@@ -261,18 +262,23 @@ def _main(args):
     train_box = np.array(voc['train/boxes'])
     '''
     
-    test_sample_num = 3
     latest_weight_file = 'train_result/latest_weight.h5'
     
     # test happy path logic, just use 2 samples
     # train_image = np.array([voc['train/images'][test_sample_num], voc['train/images'][test_sample_num+1]])
     # train_box = np.array([voc['train/boxes'][test_sample_num], voc['train/boxes'][test_sample_num+1]])
     # test end
+    batch_size = 1200
+    train_size = (voc['train/images']).size
+    max_mod = math.ceil(train_size/batch_size)
     
-    picked_random_begin = randrange(0, (voc['train/images']).size - 2401)
-    picked_random_end = picked_random_begin+2400
+    picked_random_begin = (args % max_mod)* batch_size
+    picked_random_end = min(picked_random_begin+1200, train_size) - 1
     
-    print('train from ', picked_random_begin, ' to ', picked_random_end)
+    # picked_random_begin = randrange(0, (voc['train/images']).size - 2401)
+    # picked_random_end = picked_random_begin+2400
+    
+    print('Total ', train_size, 'sample. Pick from ', picked_random_begin, ' to ', picked_random_end)
     
     train_image = np.array(voc['train/images'][picked_random_begin:picked_random_end])
     train_box = np.array(voc['train/boxes'][picked_random_begin:picked_random_end])
@@ -389,7 +395,9 @@ def _main(args):
         # save trained model
         #save_trained_model(model_body)
         
-        test_data = PIL.Image.open(io.BytesIO(voc['train/images'][78]))
+        rand_show = randrange(picked_random_begin, picked_random_end)
+        
+        test_data = PIL.Image.open(io.BytesIO(voc['train/images'][rand_show]))
         do_predict(model_body, class_names, anchors, test_data, print_size_limit=1200., score_threshold=0.3, iou_threshold=0.9)
     
 def do_predict(model_body, class_names, anchors, test_data, print_size_limit=1024., score_threshold=0.6, iou_threshold=0.5):

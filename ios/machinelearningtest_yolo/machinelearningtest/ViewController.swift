@@ -18,6 +18,8 @@ class ViewController: UIViewController, AVCapturePhotoCaptureDelegate {
     @IBOutlet weak var takePhotoButton: UIButton!
     @IBOutlet weak var capturedPreviewImage: UIImageView!
     @IBOutlet weak var boxesView: ShowBoxView!
+    @IBOutlet weak var IoUSlider: UISlider!
+    @IBOutlet weak var scoreSlider: UISlider!
    
 
     
@@ -74,6 +76,8 @@ class ViewController: UIViewController, AVCapturePhotoCaptureDelegate {
     let X_MIN_INDEX = 1
     let Y_MAX_INDEX = 2
     let X_MAX_INDEX = 3
+    var IoUThresholdValue:Float = 0.6
+    var scoreThresholdValue:Float = 0.3
 
     
     override func viewDidLoad() {
@@ -97,7 +101,7 @@ class ViewController: UIViewController, AVCapturePhotoCaptureDelegate {
 //        imageView.frame = CGRect(x: 800m, y: 30, width: 150, height: 150)
 //        self.view.addSubview(imageView)
         let my_prediction = doPredictFromImage(underPredictImage: my_image!)
-        let filterd_result = yolo_predict_filter(predicted_result: my_prediction!, score_threshold: 0.31, iou_threshold: 0.6)
+        let filterd_result = yolo_predict_filter(predicted_result: my_prediction!, score_threshold: scoreThresholdValue, iou_threshold: IoUThresholdValue)
 //         showInUI(myIdentity: my_prediction!)
         capturedPreviewImage.image = drawBoxesOnImage(image: my_image!, pboxes: filterd_result)
        
@@ -177,7 +181,7 @@ class ViewController: UIViewController, AVCapturePhotoCaptureDelegate {
             }
         }
         
-        filtered_boxes = IOUFilter(boxArray: filtered_boxes, iou_threshold: 0.7)
+        filtered_boxes = IOUFilter(boxArray: filtered_boxes, iou_threshold: iou_threshold)
         
         return filtered_boxes
     }
@@ -256,6 +260,13 @@ class ViewController: UIViewController, AVCapturePhotoCaptureDelegate {
         let settings = AVCapturePhotoSettings(format: [AVVideoCodecKey: AVVideoCodecType.jpeg])
         stillImageOutput.capturePhoto(with: settings, delegate: self)
     }
+    @IBAction func IoUValueChanged(_ sender: Any) {
+        IoUThresholdValue = IoUSlider.value
+    }
+    
+    @IBAction func ScoreVauleChanged(_ sender: Any) {
+        scoreThresholdValue = scoreSlider.value
+    }
     
     @IBAction func didTakePhoto(_ sender: Any) {
         triggeredByCamera = true
@@ -279,7 +290,7 @@ class ViewController: UIViewController, AVCapturePhotoCaptureDelegate {
             triggeredByCamera = false
         }
         let my_prediction = doPredictFromImage(underPredictImage: getimage!)
-        let filterd_result = yolo_predict_filter(predicted_result: my_prediction!, score_threshold: 0.31, iou_threshold: 0.6)
+        let filterd_result = yolo_predict_filter(predicted_result: my_prediction!, score_threshold: scoreThresholdValue, iou_threshold: IoUThresholdValue)
 //         showInUI(myIdentity: my_prediction!)
         boxesView.drawBoxesOnMe(pboxes: filterd_result)
         showInUI(myIdentity: my_prediction!)

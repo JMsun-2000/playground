@@ -15,6 +15,7 @@ import collections
 import copy
 
 POINTS_INDEX = []
+CUR_TRIANGLES = {}
 
 class Segment:
 
@@ -49,11 +50,19 @@ class Circle:
         s1 = Segment(point1, point2, None, None)
         s2 = Segment(point2, point3, None, None)
         
+        print ("s1", s1.start, s1.end, s1.m, s1.b)
+        print ("s2", s2.start, s2.end, s2.m, s2.b)
         self.center = s1.bisector().intersect(s2.bisector())
+        self.radius_pow = pow((self.center[0] - point1[0]), 2) + pow((self.center[1] - point1[1]), 2)
         self.radius = sqrt(pow((self.center[0] - point1[0]), 2) + pow((self.center[1] - point1[1]), 2))
         
+    def isInsideQuick(self, point):
+        return
+        
     def isInside(self, point):
-        return pow((point[0] - self.center[0]), 2) + pow((point[1] - self.center[1]), 2) < pow(self.radius, 2)
+        print ("check inside", point, "in circle", self.center, self.radius) 
+        print (pow((point[0] - self.center[0]), 2), pow((point[1] - self.center[1]), 2), self.radius_pow)
+        return pow((point[0] - self.center[0]), 2) + pow((point[1] - self.center[1]), 2) < self.radius_pow
 
 class Edge:
     def __init__(self, point1, point2):
@@ -78,20 +87,26 @@ class Edge:
             return True
         # print(self.low, POINTS_INDEX[self.low], self.high, POINTS_INDEX[self.high])
         # print(self.joints[0], POINTS_INDEX[self.joints[0]], self.joints[1], POINTS_INDEX[self.joints[1]])
-        circle1 = Circle(POINTS_INDEX[self.low], POINTS_INDEX[self.high], POINTS_INDEX[self.joints[0]])
-        if circle1.isInside(POINTS_INDEX[self.joints[1]]):
+        circle1 = Circle(POINTS_INDEX[self.low], POINTS_INDEX[self.high], POINTS_INDEX[min(self.joints[0], self.joints[1])])
+        if circle1.isInside(POINTS_INDEX[max(self.joints[0], self.joints[1])]):
             return False
-        circle2 = Circle(POINTS_INDEX[self.low], POINTS_INDEX[self.high], POINTS_INDEX[self.joints[1]])
-        if circle1.isInside(POINTS_INDEX[self.joints[0]]):
-            return False
+        # circle2 = Circle(POINTS_INDEX[self.low], POINTS_INDEX[self.high], POINTS_INDEX[self.joints[1]])
+        # if circle1.isInside(POINTS_INDEX[self.joints[0]]):
+        #     return False
         
         return True
     
     def flip(self):
         if len(self.joints) < 2:
             return
+        new_low = min(self.joints[0], self.joints[1])
+        new_high = max(self.joints[0], self.joints[1])
+        self.joints = [self.low, self.high]
+        self.low = new_low
+        self.high = new_high
+        self.key = (new_low, new_high)
 
-def readSegments(triangulation_file):
+def readTriangle(triangulation_file):
     triangle_array = []
 
     with open(triangulation_file) as f:
@@ -115,7 +130,7 @@ def readSegments(triangulation_file):
 
     return triangle_array
 
-def drawtriangles(triangles):
+def drawtriangles(triangles, debug_mode=False):
     image = Image.new('RGB', (400, 400), (255, 255, 255))
     draw = ImageDraw.Draw(image)
     
@@ -124,8 +139,15 @@ def drawtriangles(triangles):
     # draw.polygon([points[0], points[7], points[1]], outline=(randrange(0, 255), randrange(0, 255), randrange(0, 255)))
     # draw.polygon([points[1], points[0], points[3]], outline=(randrange(0, 255), randrange(0, 255), randrange(0, 255)))
     for tri in triangles:
-        draw.polygon([POINTS_INDEX[tri[0]], POINTS_INDEX[tri[1]], POINTS_INDEX[tri[2]]], outline=(randrange(0, 255), randrange(0, 255), randrange(0, 255)))
+       # draw.polygon([POINTS_INDEX[tri[0]], POINTS_INDEX[tri[1]], POINTS_INDEX[tri[2]]], outline=(randrange(0, 255), randrange(0, 255), randrange(0, 255)))
+        draw.polygon([POINTS_INDEX[tri[0]], POINTS_INDEX[tri[1]], POINTS_INDEX[tri[2]]], outline="red")
+      
         count +=1
+        if debug_mode:
+            tri_circle = Circle(POINTS_INDEX[tri[0]], POINTS_INDEX[tri[1]], POINTS_INDEX[tri[2]])
+            print ("draw circle", tri_circle.center, tri_circle.radius)
+            draw.ellipse((tri_circle.center[0]-tri_circle.radius, tri_circle.center[1]-tri_circle.radius,
+                          tri_circle.center[0]+tri_circle.radius, tri_circle.center[1]+tri_circle.radius), outline='blue')
         # debug
         # if count > 0:
         #     break
@@ -148,16 +170,54 @@ def collectEdgesFromTriangle(tri, result_dict):
     insert_edge(tri[0], tri[2], tri[1], result_dict)
     insert_edge(tri[2], tri[1], tri[0], result_dict)
     
-def update_edge(begin_point, end_point, update_to, need_replace, triangules, not_checked):
+def update_edge(begin_point, end_point, update_to, need_replace, edge_checked, not_checked):
     min_idx = min(begin_point, end_point)
     max_idx = max(begin_point, end_point)
-    if triangules[(min_idx, max_idx)].joints[0] == need_replace:
-        triangules[(min_idx, max_idx)].joints[0] = update_to
+    
+    cur_key = (min_idx, max_idx)
+    
+    print ("going to change ", cur_key, "point from ", need_replace, "to ", update_to)
+    
+    if cur_key in edge_checked:
+        need_change = edge_checked.pop(cur_key)
+        print("edge ", need_change.key, " from checked", need_change.joints)
     else:
-        if len(triangules[(min_idx, max_idx)].joints) > 1:
-            triangules[(min_idx, max_idx)].joints[1] = update_to
+        need_change = not_checked.pop(cur_key)
+        print("edge ", need_change.key, " from Unchecked", need_change.joints)
         
-    not_checked[(min_idx, max_idx)] = copy.deepcopy(triangules[(min_idx, max_idx)])
+    if need_change.joints[0] == need_replace:
+        need_change.joints[0] = update_to
+    else:
+        if len(need_change.joints) > 1 and need_change.joints[1] == need_replace:
+            need_change.joints[1] = update_to
+        else:
+            print(need_replace, " need to be ", update_to)
+            print("error find:", need_change.key, need_change.joints)
+        
+    not_checked[cur_key] = need_change
+    
+def doFlip2(EdgesDict):
+    SortedEdges = collections.OrderedDict(sorted(EdgesDict.items()))
+    # print (SortedEdges)  
+    # for test in SortedEdges:
+    #     # print(test.key, test.joints)
+    #     print(test, SortedEdges[test], SortedEdges[test].key, SortedEdges[test].joints)
+    
+    flips = 0
+    
+    while bool(SortedEdges):
+        illegal_tri = []
+        cur_edge = SortedEdges.popitem(last=False)[1]
+        # print(cur_edge, cur_edge.key, cur_edge.low, cur_edge.high, cur_edge.joints)
+        
+        if cur_edge.isLegal():
+            continue
+        
+        print(cur_edge.key, cur_edge.joints, 'illegal, need flipping +1')
+        illegal_tri.append([cur_edge.low, cur_edge.high, cur_edge.joints[0]])
+        illegal_tri.append([cur_edge.low, cur_edge.high, cur_edge.joints[1]])
+        
+        drawtriangles(illegal_tri, debug_mode=True)
     
     
 def doFlip(EdgesDict):
@@ -168,42 +228,49 @@ def doFlip(EdgesDict):
         print(test, SortedEdges[test], SortedEdges[test].key, SortedEdges[test].joints)
     
     flips = 0
+    checked_edges = {}
     while bool(SortedEdges):
         cur_edge = SortedEdges.popitem(last=False)[1]
         print(cur_edge, cur_edge.key, cur_edge.low, cur_edge.high, cur_edge.joints)
         
         if cur_edge.isLegal():
+            checked_edges[cur_edge.key] = cur_edge
             continue
         
         print(cur_edge.key, 'illegal, need flipping +1')
         flips += 1
         # need flip   
-        del EdgesDict[cur_edge.key]
-        insert_edge(cur_edge.joints[0], cur_edge.joints[1], cur_edge.low, EdgesDict)
-        insert_edge(cur_edge.joints[0], cur_edge.joints[1], cur_edge.high, EdgesDict)
+        cur_edge.flip()
+        checked_edges[cur_edge.key] = cur_edge
         
-        print("before:")
+        print("checkedEdges before:")
+        for test in checked_edges:
+            print(test, checked_edges[test], checked_edges[test].key, checked_edges[test].joints)
+        print("SortedEdges before:")
         for test in SortedEdges:
             # print(test.key, test.joints)
             print(test, SortedEdges[test], SortedEdges[test].key, SortedEdges[test].joints)
         
-        update_edge(cur_edge.low, cur_edge.joints[0], cur_edge.joints[1], cur_edge.high, EdgesDict, SortedEdges)
-        update_edge(cur_edge.low, cur_edge.joints[1], cur_edge.joints[0], cur_edge.high, EdgesDict, SortedEdges)
-        update_edge(cur_edge.high, cur_edge.joints[0], cur_edge.joints[1], cur_edge.low, EdgesDict, SortedEdges)
-        update_edge(cur_edge.high, cur_edge.joints[1], cur_edge.joints[0], cur_edge.low, EdgesDict, SortedEdges)
+        update_edge(cur_edge.low, cur_edge.joints[0], cur_edge.high, cur_edge.joints[1], checked_edges, SortedEdges)
+        update_edge(cur_edge.low, cur_edge.joints[1], cur_edge.high, cur_edge.joints[0], checked_edges, SortedEdges)
+        update_edge(cur_edge.high, cur_edge.joints[0], cur_edge.low, cur_edge.joints[1], checked_edges, SortedEdges)
+        update_edge(cur_edge.high, cur_edge.joints[1], cur_edge.low, cur_edge.joints[0], checked_edges, SortedEdges)
         
-        print("after:")
+        print("checkedEdges after:")
+        for test in checked_edges:
+            print(test, checked_edges[test], checked_edges[test].key, checked_edges[test].joints)
+        print("SortedEdges after:")
         for test in SortedEdges:
             # print(test.key, test.joints)
             print(test, SortedEdges[test], SortedEdges[test].key, SortedEdges[test].joints)
         # resort
-        # SortedEdges = collections.OrderedDict(sorted(SortedEdges.items()))
+        SortedEdges = collections.OrderedDict(sorted(SortedEdges.items()))
         
     return flips
     
 
 def main():
-    triangles = readSegments("inputTriangulation.txt")
+    triangles = readTriangle("inputTriangulation2.txt")
     print(POINTS_INDEX)
     print(triangles)
     # easy view
@@ -216,7 +283,7 @@ def main():
         collectEdgesFromTriangle(tri, EdgesDict)
     
     print (EdgesDict.keys())
-    return doFlip(EdgesDict)
+    print ("flip times:", doFlip2(EdgesDict))
     
     # return EdgesDict
     

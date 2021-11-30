@@ -208,5 +208,5 @@ def readSegments(seg_file):
             segments.append(s)
     return segments
 
-seg_input = readSegments("LineSegments2.txt")
+seg_input = readSegments("LineSegments.txt")
 sweep(seg_input)

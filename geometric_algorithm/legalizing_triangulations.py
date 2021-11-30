@@ -47,8 +47,20 @@ class Segment:
 
 class Circle:
     def __init__(self, point1, point2, point3):
-        s1 = Segment(point1, point2, None, None)
-        s2 = Segment(point2, point3, None, None)
+        # avoid zero division which caused by vertical line
+        p1 = point1
+        p2 = point2
+        p3 = point3
+        
+        if point1[1] == point2[1]:
+            p2 = point3
+            p3 = point2
+        elif point2[1] == point2[1]:
+            p1 = point2
+            p2 = point1
+        
+        s1 = Segment(p1, p2, None, None)
+        s2 = Segment(p2, p3, None, None)
         
         print ("s1", s1.start, s1.end, s1.m, s1.b)
         print ("s2", s2.start, s2.end, s2.m, s2.b)
@@ -270,7 +282,7 @@ def doFlip(EdgesDict):
     
 
 def main():
-    triangles = readTriangle("inputTriangulation2.txt")
+    triangles = readTriangle("inputTriangulation5.txt")
     print(POINTS_INDEX)
     print(triangles)
     # easy view
@@ -283,7 +295,7 @@ def main():
         collectEdgesFromTriangle(tri, EdgesDict)
     
     print (EdgesDict.keys())
-    print ("flip times:", doFlip2(EdgesDict))
+    print ("flip times:", doFlip(EdgesDict))
     
     # return EdgesDict
     

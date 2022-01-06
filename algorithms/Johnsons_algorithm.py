@@ -5,6 +5,9 @@ Created on Wed Jan  5 19:54:52 2022
 
 @author: sunjim
 """
+import heapq
+
+MAX_INT = float('Inf')
 
 def readGraph(edges_file):
     edges = {}
@@ -28,6 +31,22 @@ def readGraph(edges_file):
             
     vertixes = dict(sorted(vertixes.items(), key=lambda item: item[0]))
     return edges, vertixes, v_with_neg_cost
+
+# Dijkstra algorithm
+def dijkstra_use_heap(adjList, verticesCount, src):
+    shortestPaths = [MAX_INT for i in range(verticesCount)]
+    visited = [False for i in range(verticesCount)]
+    pq = [(0, src)]
+    while len(pq) > 0:
+        w, u = heapq.heappop(pq)
+        if visited[u]:
+            continue
+        visited[u] = True
+        shortestPaths[u] = w
+        for v, wt in adjList[u]:
+            if not visited[v]:
+                heapq.heappush(pq, (w+wt, v))
+    return shortestPaths
 
 def Dijkstra(vertixes, sorted_rweight_edges, start='1'):
     V = list(vertixes.keys())

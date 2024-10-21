@@ -7,11 +7,11 @@ Created on Fri Apr 16 15:59:52 2021
 """
 
 
-from keras.models import Model
-from keras.layers import Lambda
-from keras.layers.merge import concatenate
-from keras.layers import Input, Lambda, Conv2D
-from keras import backend as K
+from tensorflow.keras import Model
+from tensorflow.keras.layers import Lambda
+from tensorflow.keras.layers import concatenate
+from tensorflow.keras.layers import Input, Lambda, Conv2D
+from tensorflow.keras import backend as K
 
 from my_utils.utils import compose
 from my_utils.keras_darknet19 import (DarknetConv2D, DarknetConv2D_BN_Leaky,
@@ -19,6 +19,12 @@ from my_utils.keras_darknet19 import (DarknetConv2D, DarknetConv2D_BN_Leaky,
 
 import tensorflow as tf
 import numpy as np
+
+YOLO_ANCHORS = np.array(
+    ((0.57273, 0.677385), (1.87446, 2.06253), (3.33843, 5.47434),
+     (7.88282, 3.52778), (9.77052, 9.16828)))
+
+CLASS_NUM = 20
 
 
 # def MyYolo(input_shape = (608, 608, 3)):
@@ -30,6 +36,7 @@ def space_to_depth_x2(x):
     """Thin wrapper for Tensorflow space_to_depth with block_size=2."""
     # Import currently required to make Lambda work.
     # See: https://github.com/fchollet/keras/issues/5088#issuecomment-273851273
+    import tensorflow as tf
     return tf.nn.space_to_depth(x, block_size=2)    
 
 def space_to_depth_x2_output_shape(input_shape):
@@ -89,7 +96,8 @@ def yolo_head(feats, anchors, num_classes):
     """
     num_anchors = len(anchors)
     # Reshape to batch, height, width, num_anchors, box_params.
-    anchors_tensor = K.reshape(K.variable(anchors), [1, 1, 1, num_anchors, 2])
+    #anchors_tensor = K.reshape(K.variable(anchors), [1, 1, 1, num_anchors, 2])
+    anchors_tensor = K.reshape(anchors, [1, 1, 1, num_anchors, 2])
     
     # Static implementation for fixed models.
     # TODO: Remove or add option for static implementation.
@@ -100,6 +108,8 @@ def yolo_head(feats, anchors, num_classes):
     # shape(feats) (m, gridx, gridy, anchors, xxx)
     # get grids shape (13, 13)
     conv_dims = K.shape(feats)[1:3]  # assuming channels last
+    #conv_dims = [13, 13]
+    # conv_dims = feats.shape[1:3]  # assuming channels last
     # In YOLO the height index is the inner most iteration.
     # will generate array [ 0,  1,  2,  3,  4,  5,  6,  7,  8,  9, 10, 11, 12]
     conv_height_index = K.arange(0, stop=conv_dims[0])
@@ -171,7 +181,8 @@ def yolo_head(feats, anchors, num_classes):
     # xy from 1 grid to whole image
     box_xy = (box_xy + conv_index) / conv_dims
     # wh under 5 different anchors' tensor
-    box_wh = box_wh * anchors_tensor / conv_dims
+    #box_wh = box_wh * anchors_tensor / conv_dims
+    box_wh = box_wh * K.cast(anchors_tensor, K.dtype(box_wh)) / conv_dims
 
     return box_xy, box_wh, box_confidence, box_class_probs
 
@@ -185,6 +196,24 @@ def yolo_boxes_to_corners(box_xy, box_wh):
         box_maxes[..., 1:2],  # y_max
         box_maxes[..., 0:1]  # x_max
     ])
+
+def yolo_box_translate(yolo_output):
+    yolo_output_shape = K.shape(yolo_output)
+    pred_xy, pred_wh, pred_confidence, pred_class_prob = yolo_head(yolo_output, YOLO_ANCHORS, CLASS_NUM)
+    boxes = yolo_boxes_to_corners(pred_xy, pred_wh)
+    box_scores = pred_confidence * pred_class_prob
+
+    # print(boxes.shape)
+    # print(pred_confidence.shape)
+    # print(pred_class_prob.shape)
+    
+    box_class_scores = K.max(box_scores, axis=-1, keepdims=True)
+    box_classes = K.cast(K.expand_dims(K.argmax(box_scores, axis=-1)), K.dtype(box_class_scores))
+    # print("--------output---------")
+    # print(box_class_scores.shape)
+    # print(box_classes.shape)
+    # print(K.concatenate([boxes, box_class_scores, box_classes]).shape)
+    return K.concatenate([boxes, box_class_scores, box_classes])
 
 def yolo_loss(args, anchors, num_classes, rescore_confidence=False, print_loss=False):
     (yolo_output, true_boxes, detectors_mask, matching_true_boxes) = args
@@ -305,7 +334,7 @@ def yolo_loss(args, anchors, num_classes, rescore_confidence=False, print_loss=F
     total_loss = 0.5 * (
         confidence_loss_sum + classification_loss_sum + coordinates_loss_sum)
     if print_loss:
-        total_loss = tf.Print(
+        total_loss = tf.print(
             total_loss, [
                 total_loss, confidence_loss_sum, classification_loss_sum,
                 coordinates_loss_sum
@@ -326,6 +355,36 @@ def yolo_filter_boxes(boxes, box_confidence, box_class_probs, threshold=.6):
     scores = tf.boolean_mask(box_class_scores, prediction_mask)
     classes = tf.boolean_mask(box_classes, prediction_mask)
     return boxes, scores, classes
+
+def yolo_eval_with_sess(yolo_outputs,
+              image_shape,
+              sess,
+              max_boxes=10,
+              score_threshold=.6,
+              iou_threshold=.5):
+    """Evaluate YOLO model on given input batch and return filtered boxes."""
+    box_xy, box_wh, box_confidence, box_class_probs = yolo_outputs
+    boxes = yolo_boxes_to_corners(box_xy, box_wh)
+    boxes, scores, classes = yolo_filter_boxes(
+        boxes, box_confidence, box_class_probs, threshold=score_threshold)
+    
+   # Scale boxes back to original image shape.
+    height = image_shape[0]
+    width = image_shape[1]
+    image_dims = K.stack([height, width, height, width])
+    image_dims = K.reshape(image_dims, [1, 4])
+    boxes = boxes * image_dims
+   
+
+    # TODO: Something must be done about this ugly hack!
+    max_boxes_tensor = K.variable(max_boxes, dtype='int32')
+    sess.run(tf.compat.v1.variables_initializer([max_boxes_tensor]))
+    #Greedily selects a subset of bounding boxes in descending order of score
+    nms_index = tf.image.non_max_suppression(boxes, scores, max_boxes_tensor, iou_threshold=iou_threshold)
+    boxes = K.gather(boxes, nms_index)
+    scores = K.gather(scores, nms_index)
+    classes = K.gather(classes, nms_index)
+    return boxes, scores, classes
     
 def yolo_eval(yolo_outputs,
               image_shape,
@@ -344,10 +403,13 @@ def yolo_eval(yolo_outputs,
     image_dims = K.stack([height, width, height, width])
     image_dims = K.reshape(image_dims, [1, 4])
     boxes = boxes * image_dims
+   
 
-   # TODO: Something must be done about this ugly hack!
-    max_boxes_tensor = K.variable(max_boxes, dtype='int32')
-    K.get_session().run(tf.variables_initializer([max_boxes_tensor]))
+    # TODO: Something must be done about this ugly hack!
+    with tf.compat.v1.Session() as sess:
+        max_boxes_tensor = K.variable(max_boxes, dtype='int32')
+        sess.run(tf.compat.v1.variables_initializer([max_boxes_tensor]))
+    sess.close()
     #Greedily selects a subset of bounding boxes in descending order of score
     nms_index = tf.image.non_max_suppression(boxes, scores, max_boxes_tensor, iou_threshold=iou_threshold)
     boxes = K.gather(boxes, nms_index)

@@ -6,13 +6,13 @@ Created on Fri Apr 23 16:49:26 2021
 @author: sunjim
 """
 
-from keras.layers import Conv2D, MaxPooling2D
-from keras.layers.advanced_activations import LeakyReLU
+from tensorflow.keras.layers import Conv2D, MaxPooling2D
+from tensorflow.keras.layers import LeakyReLU
 from my_utils.utils import compose
 import functools
 from functools import partial
 from keras.regularizers import l2
-from keras.layers.normalization import BatchNormalization
+from tensorflow.keras.layers import BatchNormalization
 
 # Partial wrapper for Convolution2D with static default argument.
 _DarknetConv2D = partial(Conv2D, padding='same')

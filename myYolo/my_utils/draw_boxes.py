@@ -34,7 +34,7 @@ def get_colors_for_classes(num_classes):
     return colors
 
 
-def draw_boxes(image, boxes, box_classes, class_names, scores=None):
+def draw_boxes(image, boxes, box_classes, class_names, scores=None, image_converted=True):
     """Draw bounding boxes on image.
 
     Draw bounding boxes with class name and optional box score on image.
@@ -50,7 +50,8 @@ def draw_boxes(image, boxes, box_classes, class_names, scores=None):
     Returns:
         A copy of `image` modified with given bounding boxes.
     """
-    image = Image.fromarray(np.floor(image * 255 + 0.5).astype('uint8'))
+    if image_converted:
+        image = Image.fromarray(np.floor(image * 255 + 0.5).astype('uint8'))
 
     font = ImageFont.truetype(
         font='font/FiraMono-Medium.otf',
@@ -69,14 +70,18 @@ def draw_boxes(image, boxes, box_classes, class_names, scores=None):
             label = '{}'.format(box_class)
 
         draw = ImageDraw.Draw(image)
-        label_size = draw.textsize(label, font)
+        ttbox = draw.textbbox((0,0), label, font=font)
+        label_size = np.array([ttbox[2], ttbox[3]])
+        # textsize is deprecated
+   #     label_size = draw.textsize(label, font)
+        print(label_size)
 
         top, left, bottom, right = box
         top = max(0, np.floor(top + 0.5).astype('int32'))
         left = max(0, np.floor(left + 0.5).astype('int32'))
         bottom = min(image.size[1], np.floor(bottom + 0.5).astype('int32'))
         right = min(image.size[0], np.floor(right + 0.5).astype('int32'))
-        print(label, (left, top), (right, bottom))
+        print(label, (left, top), (right, bottom), scores[i])
 
         if top - label_size[1] >= 0:
             text_origin = np.array([left, top - label_size[1]])

@@ -12,8 +12,8 @@ import Vision
 import AVFoundation
 
 
-
-class ViewController: UIViewController, AVCapturePhotoCaptureDelegate {
+//
+class ViewController: UIViewController, AVCapturePhotoCaptureDelegate, AVCaptureVideoDataOutputSampleBufferDelegate {
     @IBOutlet weak var videoView: UIView!
     @IBOutlet weak var takePhotoButton: UIButton!
     @IBOutlet weak var capturedPreviewImage: UIImageView!
@@ -219,7 +219,7 @@ class ViewController: UIViewController, AVCapturePhotoCaptureDelegate {
         let resized_image = resizeImage(image: underPredictImage, newWidth: resizeEnforce, newHeight: resizeEnforce)
         var mlinputarray = resized_image.getPixelArray()
 //        var test = resized_image.pixelBuffer(width: 64, height: 64)
-        var input_value = yoloInput(input_33: mlinputarray)//myTrainedInput(input_1: mlinputarray)
+        var input_value = yoloInput(input_1: mlinputarray)//myTrainedInput(input_1: mlinputarray)
         let my_prediction = try? binary_model.prediction(input: input_value)
         print(my_prediction?.Identity)
         return my_prediction!.Identity
@@ -277,23 +277,35 @@ class ViewController: UIViewController, AVCapturePhotoCaptureDelegate {
         // dispose system shutter sound
         AudioServicesDisposeSystemSoundID(1108)
         
+        var filterd_result:Array<PredictedBox>? = nil
+        
         /* emulator hasn't camera  */
         guard let imageData = photo.fileDataRepresentation()
             else { return }
-        
-        let getimage = UIImage(data: imageData)
+        DispatchQueue.global().async {
+            do {
+                let getimage = UIImage(data: imageData)
 
-        // for test
-//         let getimage =  UIImage(named: "images/try_mew2.jpg")
-        if triggeredByCamera {
-            capturedPreviewImage.image = getimage
-            triggeredByCamera = false
+                // for test
+        //         let getimage =  UIImage(named: "images/try_mew2.jpg")
+                if self.triggeredByCamera {
+    //                self.capturedPreviewImage.image = getimage
+                    self.triggeredByCamera = false
+                }
+                let my_prediction = self.doPredictFromImage(underPredictImage: getimage!)
+                filterd_result = self.yolo_predict_filter(predicted_result: my_prediction!, score_threshold: self.scoreThresholdValue, iou_threshold: self.IoUThresholdValue)
+        //         showInUI(myIdentity: my_prediction!)
+            } catch {
+                print("Async Failed")
+            }
+            DispatchQueue.main.async(execute: {
+                if filterd_result != nil {
+                    self.boxesView.drawBoxesOnMe(pboxes: filterd_result!)
+                }
+            })
         }
-        let my_prediction = doPredictFromImage(underPredictImage: getimage!)
-        let filterd_result = yolo_predict_filter(predicted_result: my_prediction!, score_threshold: scoreThresholdValue, iou_threshold: IoUThresholdValue)
-//         showInUI(myIdentity: my_prediction!)
-        boxesView.drawBoxesOnMe(pboxes: filterd_result)
-        showInUI(myIdentity: my_prediction!)
+        
+//        showInUI(myIdentity: my_prediction!)
     }
     
     override func viewDidAppear(_ animated: Bool) {
@@ -321,7 +333,7 @@ class ViewController: UIViewController, AVCapturePhotoCaptureDelegate {
             print("Error Unable to initialize back camera:  \(error.localizedDescription)")
         }
         
-        captureTimer = Timer.scheduledTimer(timeInterval: 1.0, target: self, selector: #selector(autoTakePhoto), userInfo: nil, repeats: true)
+//        captureTimer = Timer.scheduledTimer(timeInterval: 1.0, target: self, selector: #selector(autoTakePhoto), userInfo: nil, repeats: true)
         
     }
     

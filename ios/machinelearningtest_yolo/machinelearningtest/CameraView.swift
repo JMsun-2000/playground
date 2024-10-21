@@ -30,7 +30,7 @@ final class CameraView: UIView {
     private let captureDevice: AVCaptureDevice? = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back)
     private lazy var session: AVCaptureSession = {
         let s = AVCaptureSession()
-        s.sessionPreset = .vga640x480
+        s.sessionPreset = .high
         return s
     }()
 
@@ -79,4 +79,7 @@ final class CameraView: UIView {
     }
 }
 
-extension CameraView: AVCaptureVideoDataOutputSampleBufferDelegate {}
+extension CameraView: AVCaptureVideoDataOutputSampleBufferDelegate {
+    
+    
+}

@@ -70,7 +70,11 @@ def draw_boxes(image, boxes, box_classes, class_names, scores=None, image_conver
             label = '{}'.format(box_class)
 
         draw = ImageDraw.Draw(image)
-        label_size = draw.textsize(label, font)
+        ttbox = draw.textbbox((0,0), label, font=font)
+        label_size = np.array([ttbox[2], ttbox[3]])
+        # textsize is deprecated
+   #     label_size = draw.textsize(label, font)
+        print(label_size)
 
         top, left, bottom, right = box
         top = max(0, np.floor(top + 0.5).astype('int32'))

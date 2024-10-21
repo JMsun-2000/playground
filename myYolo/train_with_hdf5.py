@@ -387,6 +387,18 @@ def _main(args):
         # model.load_weights(weights_name)
         #model_body.load_weights('trained_stage_3_best.h5')
         model_body.load_weights(latest_weight_file)
+        
+        model_body.save("train_result/whole_model")
+    
+        #for tf lite
+        # Convert the model.
+        converter = tf.lite.TFLiteConverter.from_keras_model(model_body)
+        tflite_model = converter.convert()
+        
+        # Save the model.
+        with open('train_result/Lite/model.tflite', 'wb') as f:
+          f.write(tflite_model)
+        
         #model_body.save('generated_models/try.h5')
         #model_body.load_weights('overfit_weights.h5')
         ios_model.load_weights(latest_weight_file)
@@ -396,6 +408,7 @@ def _main(args):
         #save_trained_model(model_body)
         
         rand_show = randrange(picked_random_begin, picked_random_end)
+        print("Randomly picked No.", rand_show)
         
         test_data = PIL.Image.open(io.BytesIO(voc['train/images'][rand_show]))
         do_predict(model_body, class_names, anchors, test_data, print_size_limit=1200., score_threshold=0.3, iou_threshold=0.9)

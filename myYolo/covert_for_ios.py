@@ -12,6 +12,14 @@ import coremltools
 
 import tensorflow as tf
 
+# Convert the model
+converter = tf.lite.TFLiteConverter.from_saved_model("train_result/whole_model") # path to the SavedModel directory
+tflite_model = converter.convert()
+
+# Save the model.
+with open('train_result/Lite/model.tflite', 'wb') as f:
+  f.write(tflite_model)
+
 
 # from resnets_utils import *
 # import coremltools.proto.FeatureTypes_pb2 as ft 

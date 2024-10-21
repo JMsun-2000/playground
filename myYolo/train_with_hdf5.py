@@ -176,13 +176,19 @@ def pure_test(pic_num, score_threshold = 0.3, iou_threshold = 0.7):
     #test_data = PIL.Image.open('test_me.jpg')
     print('overfit')
     do_predict(model_body, class_names, anchors, test_data, print_size_limit=800., score_threshold=score_threshold, iou_threshold=iou_threshold)
-    
+  
+def test_my_image(filename='try_mew2.jpg'):
+    anchors = YOLO_ANCHORS
+    class_names = get_classes('model_data/pascal_classes.txt')
+    data_path = "train_data/pascal_voc_07_12.hdf5"
+    voc = h5py.File(data_path, 'r')
+    model_body, model, ios_model = create_model(anchors, class_names, False, False)
     # val_best
     model_body.load_weights('train_result/latest_weight.h5')
     #test_data = PIL.Image.open(io.BytesIO(voc['train/images'][pic_num]))
     print('best in val')
-    test_data = PIL.Image.open('try_mew2.jpg')
-    do_predict(model_body, class_names, anchors, test_data, print_size_limit=1200., score_threshold=0.3, iou_threshold=1.0)
+    test_data = PIL.Image.open(filename)
+    do_predict(model_body, class_names, anchors, test_data, print_size_limit=3000., score_threshold=0.3, iou_threshold=1.0)
     
     
 CONVERTED_TRAIN_DATA_PATH = 'train_data/converted_pascal_voc_07_12.hdf5'

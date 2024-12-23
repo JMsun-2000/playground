@@ -180,8 +180,8 @@ def pure_test(pic_num, score_threshold = 0.3, iou_threshold = 0.7):
 def test_my_image(filename='try_mew2.jpg'):
     anchors = YOLO_ANCHORS
     class_names = get_classes('model_data/pascal_classes.txt')
-    data_path = "train_data/pascal_voc_07_12.hdf5"
-    voc = h5py.File(data_path, 'r')
+    #data_path = "train_data/pascal_voc_07_12.hdf5"
+    #voc = h5py.File(data_path, 'r')
     model_body, model, ios_model = create_model(anchors, class_names, False, False)
     # val_best
     model_body.load_weights('train_result/latest_weight.h5')

@@ -55,7 +55,7 @@ def draw_boxes(image, boxes, box_classes, class_names, scores=None, image_conver
 
     font = ImageFont.truetype(
         font='font/FiraMono-Medium.otf',
-        size=np.floor(3e-2 * image.size[1] + 0.5).astype('int32'))
+        size=np.floor(3e-2 * image.size[1] + 5.5).astype('int32'))
     thickness = (image.size[0] + image.size[1]) // 300
 
     colors = get_colors_for_classes(len(class_names))
@@ -74,7 +74,7 @@ def draw_boxes(image, boxes, box_classes, class_names, scores=None, image_conver
         label_size = np.array([ttbox[2], ttbox[3]])
         # textsize is deprecated
    #     label_size = draw.textsize(label, font)
-        print(label_size)
+        print(label_size, (np.floor(3e-2 * image.size[1] + 0.5)))
 
         top, left, bottom, right = box
         top = max(0, np.floor(top + 0.5).astype('int32'))

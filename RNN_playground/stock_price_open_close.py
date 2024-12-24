@@ -50,10 +50,12 @@ def _main():
     train_by_data(X, y, trained_best_file)
     
     # pure test 
-    train_size = int(len(X) * 0.8)
-    X_test = X[train_size:][0:1]
-    y_test = y[train_size:][0:1]
+    train_size = int(len(X) * 0.9)
+    X_test = X[train_size:][0:10]
+    y_test = y[train_size:][0:10]
     do_predict(X_test, y_test, trained_best_file)
+    
+    do_real_predict('real_latest_stock_price.csv', trained_best_file)
     
 
 def prepare_train_data(data_path):
@@ -88,7 +90,7 @@ def create_dataset(data, look_back=30):
 
 def train_by_data(X, y, saved_weights=''):
     # Split the data into training and testing sets
-    train_size = int(len(X) * 0.8)
+    train_size = int(len(X) * 0.9)
     X_train, X_test = X[:train_size], X[train_size:]
     y_train, y_test = y[:train_size], y[train_size:]
     
@@ -133,6 +135,33 @@ def create_model():
     return model
 
 
+def do_real_predict(real_data_path, saved_weights):
+    model = create_model()
+    model.load_weights(saved_weights)
+    
+    scaler = joblib.load('scaler.save')
+    # Load your data
+    # Assume `data` is a DataFrame with columns: 'Date', 'Volume', 'Open', 'Close', 'High', 'Low'
+    data = pd.read_csv(real_data_path)
+
+    # Drop the 'Date' column for normalization and later use it for features
+    dates = data['Date']
+    data = data.drop(columns=['Date'])
+    
+    scaled_data = scaler.transform(data)
+    
+    # Add 'Date' back to the scaled data
+    #scaled_data = np.concatenate((dates.values.reshape(-1, 1), scaled_data), axis=1)
+    
+    # Make predictions
+    predictions = model.predict(np.array([scaled_data]))
+    
+    # Inverse transform the predictions to get actual values
+    predicted_prices = scaler.inverse_transform(np.concatenate((np.zeros((predictions.shape[0], 1)), predictions, np.zeros((predictions.shape[0], 2))), axis=1))[:, [1, 2]]
+    
+    print(f"Predicted Open: {predicted_prices[0, 0]}")
+    print(f"Predicted Close: {predicted_prices[0, 1]}")
+    
 
 def do_predict(X_test, y_test, saved_weights):
     model = create_model()

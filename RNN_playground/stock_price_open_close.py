@@ -41,15 +41,16 @@ from sklearn.preprocessing import MinMaxScaler
 from tensorflow.keras.callbacks import TensorBoard, ModelCheckpoint, EarlyStopping
 import joblib
 
-look_back = 30
+
 trained_best_file = "trained_best.h5"
 train_ratio = 0.9
 next_n_days = 2
 
 def _main(retrain=False):
+    look_back = 30
     train_csv_path = 'adsk_stock_prices.csv'
-    X, y = prepare_train_data(train_csv_path)
-    train_by_data(X, y, trained_best_file)
+    X, y = prepare_train_data(train_csv_path, look_back)
+    train_by_data(X, y, look_back, trained_best_file)
     
     # pure test 
     train_size = int(len(X) * train_ratio)
@@ -57,12 +58,12 @@ def _main(retrain=False):
 #    y_test = y[train_size:][-10:]
     X_test = X[train_size:][-1:]
     y_test = y[train_size:][-1:]
-    do_predict_test(X_test, y_test, trained_best_file)
+    do_predict_test(X_test, y_test, look_back, trained_best_file)
     
-    do_real_predict('real_latest_stock_price.csv', trained_best_file)
+    do_real_predict('real_latest_stock_price.csv', look_back, trained_best_file)
     
 
-def prepare_train_data(data_path):
+def prepare_train_data(data_path, look_back):
     # Load your data
     # Assume `data` is a DataFrame with columns: 'Date', 'Volume', 'Open', 'Close', 'High', 'Low'
     data = pd.read_csv(data_path)
@@ -92,7 +93,7 @@ def create_dataset(data, look_back=30):
     return np.array(X), np.array(y).reshape(-1, 2*next_n_days)
 
 
-def train_by_data(X, y, saved_weights=''):
+def train_by_data(X, y, look_back, saved_weights=''):
     # Split the data into training and testing sets
     train_size = int(len(X) * train_ratio)
     X_train, X_test = X[:train_size], X[train_size:]
@@ -109,7 +110,7 @@ def train_by_data(X, y, saved_weights=''):
     if os.path.isfile(best_loss_file):
         best_loss = np.load(best_loss_file, allow_pickle='TRUE').item()
     
-    model = create_model()   
+    model = create_model(look_back)   
     if os.path.isfile(saved_weights):
         model.load_weights(saved_weights)
     
@@ -132,7 +133,7 @@ def train_by_data(X, y, saved_weights=''):
              np.save(best_loss_file, best_loss)
     
 
-def create_model():
+def create_model(look_back):
     # Build the RNN model
     model = Sequential()
     model.add(SimpleRNN(50, input_shape=(look_back, 5), return_sequences=False))  # 5 features: Volume, Open, Close, High, Low
@@ -140,8 +141,8 @@ def create_model():
     return model
 
 
-def do_real_predict(real_data_path, saved_weights):
-    model = create_model()
+def do_real_predict(real_data_path, look_back, saved_weights):
+    model = create_model(look_back)
     model.load_weights(saved_weights)
     
     scaler = joblib.load('scaler.save')
@@ -187,8 +188,8 @@ def convert_readable_predict(predictions):
     return predicted_prices
     
 
-def do_predict_test(X_test, y_test, saved_weights):
-    model = create_model()
+def do_predict_test(X_test, y_test, look_back, saved_weights):
+    model = create_model(look_back)
     model.load_weights(saved_weights)
     
     # Make predictions

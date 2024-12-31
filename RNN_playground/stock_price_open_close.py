@@ -43,25 +43,29 @@ import joblib
 
 
 trained_best_file = "trained_best.h5"
-train_ratio = 0.9
+train_ratio = 0.97
 next_n_days = 2
 
 def _main(retrain=False):
-    look_back = 30
-    train_csv_path = 'adsk_stock_prices.csv'
-    X, y = prepare_train_data(train_csv_path, look_back)
-    train_by_data(X, y, look_back, trained_best_file)
+    look_back = 25
+    if retrain == True:
+        train_csv_path = 'adsk_stock_prices.csv'
+        X, y = prepare_train_data(train_csv_path, look_back)
+        train_by_data(X, y, look_back, trained_best_file)
     
     # pure test 
-    train_size = int(len(X) * train_ratio)
-#    X_test = X[train_size:][-10:]
-#    y_test = y[train_size:][-10:]
-    X_test = X[train_size:][-1:]
-    y_test = y[train_size:][-1:]
+    X_test, y_test = prepare_test_data('real_latest_stock_price.csv', look_back)
     do_predict_test(X_test, y_test, look_back, trained_best_file)
     
     do_real_predict('real_latest_stock_price.csv', look_back, trained_best_file)
-    
+
+def choose_model():
+    for i in range(5, 100, 5):
+        look_back = i
+        train_csv_path = 'adsk_stock_prices.csv'
+        X, y = prepare_train_data(train_csv_path, look_back)
+        train_by_data(X, y, look_back)
+        
 
 def prepare_train_data(data_path, look_back):
     # Load your data
@@ -82,6 +86,19 @@ def prepare_train_data(data_path, look_back):
     
     return create_dataset(scaled_data, look_back)
 
+def prepare_test_data(data_path, look_back):
+    # Load your data
+    # Assume `data` is a DataFrame with columns: 'Date', 'Volume', 'Open', 'Close', 'High', 'Low'
+    data = pd.read_csv(data_path)
+
+    # Drop the 'Date' column for normalization and later use it for features
+    data = data.drop(columns=['Date'])
+
+    # Normalize the data
+    scaler = joblib.load('scaler.save')
+    scaled_data = scaler.transform(data)
+    
+    return create_dataset(scaled_data, look_back)
 
 
 # Prepare the dataset
@@ -116,7 +133,7 @@ def train_by_data(X, y, look_back, saved_weights=''):
     
     model.compile(optimizer='adam', loss='mean_squared_error')
     
-    for cnt in range(1):
+    for cnt in range(250):
         # Train the model
         history = model.fit(X_train, y_train, epochs=1, batch_size=16, validation_data=(X_test, y_test),
                   callbacks=[logging, checkpoint, early_stopping])
@@ -171,14 +188,14 @@ def do_real_predict(real_data_path, look_back, saved_weights):
         print(f"Predicted day{i + 1}: Open: {round(predicted_prices[i, 0], 2)}, Close:{round(predicted_prices[i, 1], 2)}") 
     
 def convert_readable_predict(predictions):
-    print("before: {predictions}")
-    print(predictions)
-    print(predictions.shape)
+#    print("before: {predictions}")
+#    print(predictions)
+#    print(predictions.shape)
     predictions = predictions.reshape(next_n_days, 2)
     
-    print("after: {predictions.reshape(2, 2)}")
-    print(predictions)
-    print(predictions.shape)
+#    print("after: {predictions.reshape(2, 2)}")
+#    print(predictions)
+#    print(predictions.shape)
     
     scaler = joblib.load('scaler.save')
     
@@ -195,19 +212,20 @@ def do_predict_test(X_test, y_test, look_back, saved_weights):
     # Make predictions
     predictions = model.predict(X_test)
     
-    # Inverse transform the predictions to get actual values
-    predicted_prices = convert_readable_predict(predictions)
+    for ret in range(predictions.shape[0]):
     
-    # Inverse transform the actual values for comparison
-    actual_prices = convert_readable_predict(y_test)
-    
-    # Inverse transform the predictions to get actual values
-    #predicted_prices = scaler.inverse_transform(np.concatenate((np.zeros((predictions.shape[0], 1)), predictions, np.zeros((predictions.shape[0], 2))), axis=1))[:, [1, 2]]
-    
-    # Inverse transform the actual values for comparison
-    #actual_prices = scaler.inverse_transform(np.concatenate((np.zeros((y_test.shape[0], 1)), y_test, np.zeros((y_test.shape[0], 2))), axis=1))[:, [1, 2]]
-    
-    # Print the results
-    for i in range(next_n_days):
-        print(f"Predicted day{i + 1}: Open: {round(predicted_prices[i, 0], 2)}, Close:{round(predicted_prices[i, 1], 2)}") 
-        print(f"Actual day{i + 1}:    Open: {actual_prices[i, 0]}, Close: {actual_prices[i, 1]}")
+        # Inverse transform the predictions to get actual values
+        predicted_prices = convert_readable_predict(predictions[ret])
+        
+        # Inverse transform the actual values for comparison
+        actual_prices = convert_readable_predict(y_test[ret])
+        
+        # Inverse transform the predictions to get actual values
+        #predicted_prices = scaler.inverse_transform(np.concatenate((np.zeros((predictions.shape[0], 1)), predictions, np.zeros((predictions.shape[0], 2))), axis=1))[:, [1, 2]]
+        
+        # Inverse transform the actual values for comparison
+        #actual_prices = scaler.inverse_transform(np.concatenate((np.zeros((y_test.shape[0], 1)), y_test, np.zeros((y_test.shape[0], 2))), axis=1))[:, [1, 2]]
+        
+        # Print the results
+        for i in range(next_n_days):
+            print(f"Predicted{ret} day{i + 1}: Open: {round(predicted_prices[i, 0], 2)} - {actual_prices[i, 0]} ({round(predicted_prices[i, 0] - actual_prices[i, 0], 2)}), Close:{round(predicted_prices[i, 1], 2)} - {actual_prices[i, 1]} ({round(predicted_prices[i, 1] - actual_prices[i, 1], 2)})") 

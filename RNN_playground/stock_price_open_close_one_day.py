@@ -40,23 +40,28 @@ from tensorflow.keras.layers import Dense, SimpleRNN
 from sklearn.preprocessing import MinMaxScaler
 from tensorflow.keras.callbacks import TensorBoard, ModelCheckpoint, EarlyStopping
 import joblib
+from datetime import datetime, timedelta
 
-look_back = 30
-trained_best_file = "trained_best.h5"
-train_ratio = 0.9
+look_back = 25
+trained_best_file = "trained_best_one_day.h5"
+train_ratio = 0.95
 
 def _main(retrain=False):
     train_csv_path = 'adsk_stock_prices.csv'
     X, y = prepare_train_data(train_csv_path)
-    train_by_data(X, y, trained_best_file)
+    if retrain:
+        train_by_data(X, y, trained_best_file)
     
     # pure test 
     train_size = int(len(X) * train_ratio)
     X_test = X[train_size:][-10:]
     y_test = y[train_size:][-10:]
-    do_predict(X_test, y_test, trained_best_file)
     
+    do_predict(X_test, y_test, trained_best_file)
     do_real_predict('real_latest_stock_price.csv', trained_best_file)
+    
+#    do_predict(X_test, y_test, 'train_result/trained_best_in_val.h5')
+#    do_real_predict('real_latest_stock_price.csv', 'train_result/trained_best_in_val.h5')
     
 
 def prepare_train_data(data_path):
@@ -112,9 +117,9 @@ def train_by_data(X, y, saved_weights=''):
     
     model.compile(optimizer='adam', loss='mean_squared_error')
     
-    for cnt in range(500):
+    for cnt in range(5):
         # Train the model
-        history = model.fit(X_train, y_train, epochs=1, batch_size=16, validation_data=(X_test, y_test),
+        history = model.fit(X_train, y_train, epochs=50, batch_size=32, validation_data=(X_test, y_test),
                   callbacks=[logging, checkpoint, early_stopping])
         # save best
         if best_loss['train_loss'] > history.history['loss'][0]:
@@ -149,6 +154,8 @@ def do_real_predict(real_data_path, saved_weights):
     data = data[-look_back:]
     print(data)
     dates = data['Date']
+    last_day = datetime.strptime(np.array(dates)[-1] , '%m/%d/%y') + timedelta(1)
+    
     data = data.drop(columns=['Date'])
     scaled_data = scaler.transform(data)
     
@@ -161,8 +168,8 @@ def do_real_predict(real_data_path, saved_weights):
     # Inverse transform the predictions to get actual values
     predicted_prices = scaler.inverse_transform(np.concatenate((np.zeros((predictions.shape[0], 1)), predictions, np.zeros((predictions.shape[0], 2))), axis=1))[:, [1, 2]]
     
-    print(f"Predicted Open: {predicted_prices[0, 0]}")
-    print(f"Predicted Close: {predicted_prices[0, 1]}")
+    print(f"Predicted {last_day.strftime('%m/%d/%y')} Open: ${round(predicted_prices[0, 0], 2)}")
+    print(f"Predicted {last_day.strftime('%m/%d/%y')} Close: ${round(predicted_prices[0, 1], 2)}")
     
 
 def do_predict(X_test, y_test, saved_weights):
@@ -182,5 +189,5 @@ def do_predict(X_test, y_test, saved_weights):
     
     # Print the results
     for i in range(len(predicted_prices)):
-        print(f"Predicted Open: {predicted_prices[i, 0]}, Actual Open: {actual_prices[i, 0]}")
-        print(f"Predicted Close: {predicted_prices[i, 1]}, Actual Close: {actual_prices[i, 1]}")
+        print(f"Predicted Open: {round(predicted_prices[i, 0], 2)}, Actual Open: {actual_prices[i, 0]} ({round(predicted_prices[i, 0] - actual_prices[i, 0], 2)})")
+  #      print(f"Predicted Close: {round(predicted_prices[i, 1], 2)}, Actual Close: {actual_prices[i, 1]} ({round(predicted_prices[i, 1] - actual_prices[i, 1], 2)})")

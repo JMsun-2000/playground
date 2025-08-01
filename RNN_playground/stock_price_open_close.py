@@ -229,3 +229,6 @@ def do_predict_test(X_test, y_test, look_back, saved_weights):
         # Print the results
         for i in range(next_n_days):
             print(f"Predicted{ret} day{i + 1}: Open: {round(predicted_prices[i, 0], 2)} - {actual_prices[i, 0]} ({round(predicted_prices[i, 0] - actual_prices[i, 0], 2)}), Close:{round(predicted_prices[i, 1], 2)} - {actual_prices[i, 1]} ({round(predicted_prices[i, 1] - actual_prices[i, 1], 2)})") 
+
+if __name__ == "__main__":
+    _main(retrain=False)

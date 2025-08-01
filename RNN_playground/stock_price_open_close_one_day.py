@@ -42,29 +42,55 @@ from tensorflow.keras.callbacks import TensorBoard, ModelCheckpoint, EarlyStoppi
 import joblib
 from datetime import datetime, timedelta
 
-look_back = 25
-trained_best_file = "trained_best_one_day.h5"
-train_ratio = 0.95
 
-def _main(retrain=False):
-    train_csv_path = 'adsk_stock_prices.csv'
-    X, y = prepare_train_data(train_csv_path)
+trained_best_file = "trained_best_one_day.h5"
+train_ratio = 0.9
+trained_scaler_file = "one_day_scaler.save"
+
+def _main(retrain=False, load_trained=False):
+    look_back = 55
+    hidden_layer = 25
+    train_csv_path = 'adsk_stock_prices_train.csv'
+    X, y = prepare_train_data(train_csv_path, look_back)
     if retrain:
-        train_by_data(X, y, trained_best_file)
+        if load_trained:
+            train_by_data(X, y, hidden_layer, look_back, trained_best_file)
+        else:
+            train_by_data(X, y, hidden_layer, look_back)
     
     # pure test 
     train_size = int(len(X) * train_ratio)
     X_test = X[train_size:][-10:]
     y_test = y[train_size:][-10:]
     
-    do_predict(X_test, y_test, trained_best_file)
-    do_real_predict('real_latest_stock_price.csv', trained_best_file)
+    do_predict(X_test, y_test, trained_best_file, hidden_layer, look_back)
+    do_real_predict('adsk_stock_real_price.csv', trained_best_file, hidden_layer, look_back)
     
 #    do_predict(X_test, y_test, 'train_result/trained_best_in_val.h5')
 #    do_real_predict('real_latest_stock_price.csv', 'train_result/trained_best_in_val.h5')
-    
 
-def prepare_train_data(data_path):
+def choose_look_back():
+    for look_back in range(5, 100, 5):
+        train_csv_path = 'adsk_stock_prices.csv'
+        X, y = prepare_train_data(train_csv_path, look_back)
+        train_by_data(X, y, look_back)
+
+def choose_model():
+    result = {}
+    
+    for look_back in range(5, 100, 5):
+        train_csv_path = 'adsk_stock_prices.csv'
+        X, y = prepare_train_data(train_csv_path, look_back)
+        for units in range(5, 100, 5):
+            print(f"hidden_units={units}")
+            ret = train_by_data(X, y, units, look_back)
+            result[str(look_back)+':'+str(units)]=ret
+    
+    for hidden_unit in result:
+   #     print (result[hidden_unit])
+        print ('hidden ', hidden_unit,':', f"loss:{result[hidden_unit]['loss'][-1]}, val_loss:{result[hidden_unit]['val_loss'][-1]}")
+
+def prepare_train_data(data_path, look_back):
     # Load your data
     # Assume `data` is a DataFrame with columns: 'Date', 'Volume', 'Open', 'Close', 'High', 'Low'
     data = pd.read_csv(data_path)
@@ -76,7 +102,7 @@ def prepare_train_data(data_path):
     # Normalize the data
     scaler = MinMaxScaler(feature_range=(0, 1))
     scaled_data = scaler.fit_transform(data)
-    joblib.dump(scaler, 'scaler.save') 
+    joblib.dump(scaler, trained_scaler_file) 
 
     # Add 'Date' back to the scaled data
 #    scaled_data = np.concatenate((dates.values.reshape(-1, 1), scaled_data), axis=1)
@@ -94,7 +120,7 @@ def create_dataset(data, look_back=30):
     return np.array(X), np.array(y)
 
 
-def train_by_data(X, y, saved_weights=''):
+def train_by_data(X, y, hidden_unit=50, look_back=25, saved_weights=''):
     # Split the data into training and testing sets
     train_size = int(len(X) * train_ratio)
     X_train, X_test = X[:train_size], X[train_size:]
@@ -103,7 +129,7 @@ def train_by_data(X, y, saved_weights=''):
     logging = TensorBoard()
     checkpoint = ModelCheckpoint(trained_best_file, monitor='val_loss',
                                  save_weights_only=True, save_best_only=True)
-    early_stopping = EarlyStopping(monitor='val_loss', min_delta=0, patience=15, verbose=1, mode='auto')
+    early_stopping = EarlyStopping(monitor='val_loss', min_delta=0, patience=55, verbose=1, mode='auto')
     
     # my track
     best_loss_file = 'train_result/test_loss_best.npy'
@@ -111,41 +137,31 @@ def train_by_data(X, y, saved_weights=''):
     if os.path.isfile(best_loss_file):
         best_loss = np.load(best_loss_file, allow_pickle='TRUE').item()
     
-    model = create_model()   
+    model = create_model(hidden_unit, look_back, X_train.shape[-1])   
     if os.path.isfile(saved_weights):
         model.load_weights(saved_weights)
     
     model.compile(optimizer='adam', loss='mean_squared_error')
     
-    for cnt in range(5):
+    for cnt in range(1):
         # Train the model
-        history = model.fit(X_train, y_train, epochs=50, batch_size=32, validation_data=(X_test, y_test),
+        history = model.fit(X_train, y_train, epochs=255, batch_size=32, validation_data=(X_test, y_test),
                   callbacks=[logging, checkpoint, early_stopping])
-        # save best
-        if best_loss['train_loss'] > history.history['loss'][0]:
-             best_loss['train_loss'] = history.history['loss'][0]
-             model.save_weights('train_result/trained_overfit.h5')
-             np.save(best_loss_file, best_loss)
-             
-        if best_loss['val_loss'] > history.history['val_loss'][0]:
-             best_loss['val_loss'] = history.history['val_loss'][0]
-             model.save_weights('train_result/trained_best_in_val.h5')
-             np.save(best_loss_file, best_loss)
+        print(f"history loss:{history.history['loss'][-1]}, val_loss:{history.history['val_loss'][-1]}")
+        return history.history
     
 
-def create_model():
+def create_model(hidden_units=50, look_back=25, input_layer=5):
     # Build the RNN model
     model = Sequential()
-    model.add(SimpleRNN(50, input_shape=(look_back, 5), return_sequences=False))  # 5 features: Volume, Open, Close, High, Low
+    model.add(SimpleRNN(hidden_units, input_shape=(look_back, input_layer), return_sequences=False))  # 5 features: Volume, Open, Close, High, Low
     model.add(Dense(2))  # Predicting 2 values: next day Open and Close prices
     return model
 
 
-def do_real_predict(real_data_path, saved_weights):
-    model = create_model()
-    model.load_weights(saved_weights)
+def do_real_predict(real_data_path, saved_weights, hidden_units=50, look_back=25):
     
-    scaler = joblib.load('scaler.save')
+    scaler = joblib.load(trained_scaler_file)
     # Load your data
     # Assume `data` is a DataFrame with columns: 'Date', 'Volume', 'Open', 'Close', 'High', 'Low'
     data = pd.read_csv(real_data_path)
@@ -163,29 +179,31 @@ def do_real_predict(real_data_path, saved_weights):
     #scaled_data = np.concatenate((dates.values.reshape(-1, 1), scaled_data), axis=1)
     
     # Make predictions
+    model = create_model(hidden_units, look_back, scaled_data.shape[-1])
+    model.load_weights(saved_weights)
     predictions = model.predict(np.array([scaled_data]))
     
     # Inverse transform the predictions to get actual values
-    predicted_prices = scaler.inverse_transform(np.concatenate((np.zeros((predictions.shape[0], 1)), predictions, np.zeros((predictions.shape[0], 2))), axis=1))[:, [1, 2]]
+    predicted_prices = scaler.inverse_transform(np.concatenate((np.zeros((predictions.shape[0], 1)), predictions, np.zeros((predictions.shape[0], (data.shape[-1]-3)))), axis=1))[:, [1, 2]]
     
     print(f"Predicted {last_day.strftime('%m/%d/%y')} Open: ${round(predicted_prices[0, 0], 2)}")
     print(f"Predicted {last_day.strftime('%m/%d/%y')} Close: ${round(predicted_prices[0, 1], 2)}")
     
 
-def do_predict(X_test, y_test, saved_weights):
-    model = create_model()
+def do_predict(X_test, y_test, saved_weights, hidden_units=50, look_back=25):
+    model = create_model(hidden_units, look_back, X_test.shape[-1])
     model.load_weights(saved_weights)
     
     # Make predictions
     predictions = model.predict(X_test)
     
-    scaler = joblib.load('scaler.save')
+    scaler = joblib.load(trained_scaler_file)
     
     # Inverse transform the predictions to get actual values
-    predicted_prices = scaler.inverse_transform(np.concatenate((np.zeros((predictions.shape[0], 1)), predictions, np.zeros((predictions.shape[0], 2))), axis=1))[:, [1, 2]]
+    predicted_prices = scaler.inverse_transform(np.concatenate((np.zeros((predictions.shape[0], 1)), predictions, np.zeros((predictions.shape[0], (X_test.shape[-1]-3)))), axis=1))[:, [1, 2]]
     
     # Inverse transform the actual values for comparison
-    actual_prices = scaler.inverse_transform(np.concatenate((np.zeros((y_test.shape[0], 1)), y_test, np.zeros((y_test.shape[0], 2))), axis=1))[:, [1, 2]]
+    actual_prices = scaler.inverse_transform(np.concatenate((np.zeros((y_test.shape[0], 1)), y_test, np.zeros((y_test.shape[0], (X_test.shape[-1]-3)))), axis=1))[:, [1, 2]]
     
     # Print the results
     for i in range(len(predicted_prices)):

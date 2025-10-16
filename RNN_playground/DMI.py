@@ -7,9 +7,13 @@ Created on Wed Jan 15 14:12:35 2025
 """
 
 import pandas as pd
+import os
+
+#filename = "maotai/600519_20250808.csv"
+filename = "maotai/600519_bfq.csv"
 
 # Assume `data` is a DataFrame with columns: 'Date', 'Volume', 'Open', 'Close', 'High', 'Low'
-filedata = pd.read_csv("adsk_stock_prices.csv")
+filedata = pd.read_csv(filename)
 data = {
     'CLOSE': filedata['Close'],
     'HIGH': filedata['High'],
@@ -58,4 +62,4 @@ df = df.round(2)
 
 combined_df = pd.concat([filedata, df], axis=1)
 print(combined_df)
-combined_df.to_csv('adsk_stock_prices_with_dmi.csv')
+combined_df.to_csv(os.path.splitext(filename)[0] + '_with_dmi.csv')

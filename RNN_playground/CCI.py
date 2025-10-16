@@ -7,10 +7,13 @@ Created on Wed Jan 15 14:58:36 2025
 """
 
 import pandas as pd
+import os
 
 #import a_get_data
-
-filedata = pd.read_csv("adsk_stock_prices.csv")
+#filename = "maotai/600519_20250808.csv"
+filename = "maotai/600519_bfq.csv"
+#filename = "maotai/600519_20250808.csv"
+filedata = pd.read_csv(filename)
 data = {
     'CLOSE': filedata['Close'],
     'HIGH': filedata['High'],
@@ -28,9 +31,9 @@ def calculate_CCI(data, n):
 
 df = pd.DataFrame(data)
 
-#n = 14
+n = 14
 
-n = 26
+#n = 26
 
 # 计算CCI指标
 df["CCI"] = calculate_CCI(df, n)
@@ -38,4 +41,4 @@ df["CCI"] = calculate_CCI(df, n)
 
 combined_df = pd.concat([filedata, df], axis=1)
 print(combined_df)
-combined_df.to_csv('adsk_stock_prices_with_cci.csv')
+combined_df.to_csv(os.path.splitext(filename)[0] + '_with_cci.csv')

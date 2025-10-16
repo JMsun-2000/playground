@@ -1,0 +1,378 @@
+<span style="font-size: 18px;">
+	<code>
+		<span class="code-snippet_outer">
+			<span class="code-snippet__keyword">import</span> os
+		</span>
+	</code>
+	<code>
+		<span class="code-snippet_outer">
+			<span class="code-snippet__keyword">import</span> time
+		</span>
+	</code>
+	<code>
+		<span class="code-snippet_outer">
+			<span class="code-snippet__keyword">import</span> random
+		</span>
+	</code>
+	<code>
+		<span class="code-snippet_outer">
+			<span class="code-snippet__keyword">import</span> pandas 
+			<span class="code-snippet__keyword">as</span> pd
+		</span>
+	</code>
+	<code>
+		<span class="code-snippet_outer">
+			<span class="code-snippet__keyword">import</span> akshare 
+			<span class="code-snippet__keyword">as</span> ak
+		</span>
+	</code>
+	<code>
+		<span class="code-snippet_outer">
+			<span class="code-snippet__keyword">from</span> multiprocessing 
+			<span class="code-snippet__keyword">import</span> Pool
+		</span>
+	</code>
+	<code>
+		<span class="code-snippet_outer">
+			<span class="code-snippet__keyword">from</span> datetime 
+			<span class="code-snippet__keyword">import</span> datetime
+		</span>
+	</code>
+	<code>
+		<span class="code-snippet_outer">
+			<span class="code-snippet__keyword">import</span> warnings
+		</span>
+	</code>
+	<code>
+		<span class="code-snippet_outer">warnings.filterwarnings(
+			<span class="code-snippet__string">"ignore"</span>)
+		</span>
+	</code>
+	<code>
+		<span class="code-snippet_outer">pd.set_option(
+			<span class="code-snippet__string">'display.max_rows'</span>,
+			<span class="code-snippet__keyword">None</span>)     
+			<span class="code-snippet__comment">#显示所有行</span>
+		</span>
+	</code>
+	<code>
+		<span class="code-snippet_outer">pd.set_option(
+			<span class="code-snippet__string">'display.max_columns'</span>,
+			<span class="code-snippet__keyword">None</span>)  
+			<span class="code-snippet__comment">#显示所有列</span>
+		</span>
+	</code>
+	<code>
+		<span class="code-snippet_outer">pd.set_option(
+			<span class="code-snippet__string">'display.unicode.ambiguous_as_wide'</span>, 
+			<span class="code-snippet__keyword">True</span>)  
+			<span class="code-snippet__comment">#设置列名对齐</span>
+		</span>
+	</code>
+	<code>
+		<span class="code-snippet_outer">pd.set_option(
+			<span class="code-snippet__string">'display.unicode.east_asian_width'</span>, 
+			<span class="code-snippet__keyword">True</span>)   
+			<span class="code-snippet__comment">#设置列名对齐</span>
+		</span>
+	</code>
+	<code>
+		<span class="code-snippet_outer">pd.set_option(
+			<span class="code-snippet__string">'display.float_format'</span>,  
+			<span class="code-snippet__string">'{:,.2f}'</span>.format)  
+			<span class="code-snippet__comment">#设置浮点精度</span>
+		</span>
+	</code>
+	<code>
+		<span class="code-snippet_outer"></span>
+	</code>
+	<code>
+		<span class="code-snippet_outer">
+			<span class="code-snippet__comment"># 创建文件存储路径</span>
+		</span>
+	</code>
+	<code>
+		<span class="code-snippet_outer">
+			<span class="code-snippet__function">
+				<span class="code-snippet__keyword">def</span>
+				<span class="code-snippet__title">create_path</span>
+				<span class="code-snippet__params">(ak_code)</span>:
+			</span>
+		</span>
+	</code>
+	<code>
+		<span class="code-snippet_outer">
+			<span class="code-snippet__keyword">global</span> path
+		</span>
+	</code>
+	<code>
+		<span class="code-snippet_outer">
+			<span class="code-snippet__comment"># date_str = str(pd.to_datetime(start_date).date()) # 日期转换为字符串</span>
+		</span>
+	</code>
+	<code>
+		<span class="code-snippet_outer">    path = os.path.join(
+			<span class="code-snippet__string">"."</span>, 
+			<span class="code-snippet__string">"all_stock_candle"</span>, 
+			<span class="code-snippet__string">"stock"</span>)
+		</span>
+	</code>
+	<code>
+		<span class="code-snippet_outer">
+			<span class="code-snippet__comment"># 保存数据</span>
+		</span>
+	</code>
+	<code>
+		<span class="code-snippet_outer">
+			<span class="code-snippet__keyword">if</span>
+			<span class="code-snippet__keyword">not</span> os.path.exists(path):
+		</span>
+	</code>
+	<code>
+		<span class="code-snippet_outer">        os.makedirs(path)  
+			<span class="code-snippet__comment"># 创建多级文件夹</span>
+		</span>
+	</code>
+	<code>
+		<span class="code-snippet_outer">    file_name = ak_code + 
+			<span class="code-snippet__string">'.csv'</span>
+		</span>
+	</code>
+	<code>
+		<span class="code-snippet_outer">
+			<span class="code-snippet__keyword">return</span> os.path.join(path, file_name)
+		</span>
+	</code>
+	<code>
+		<span class="code-snippet_outer"></span>
+	</code>
+	<code>
+		<span class="code-snippet_outer">
+			<span class="code-snippet__comment"># 获取所有股票的历史数据</span>
+		</span>
+	</code>
+	<code>
+		<span class="code-snippet_outer">
+			<span class="code-snippet__function">
+				<span class="code-snippet__keyword">def</span>
+				<span class="code-snippet__title">do_load</span>
+				<span class="code-snippet__params">(ak_code, ak_name, period, start_date, end_date, adj, timeout)</span>:
+			</span>
+		</span>
+	</code>
+	<code>
+		<span class="code-snippet_outer">    print(ak_code, ak_name)</span>
+	</code>
+	<code>
+		<span class="code-snippet_outer">
+			<span class="code-snippet__keyword">for</span> i 
+			<span class="code-snippet__keyword">in</span> range(
+			<span class="code-snippet__number">3</span>):
+		</span>
+	</code>
+	<code>
+		<span class="code-snippet_outer">
+			<span class="code-snippet__keyword">try</span>:
+		</span>
+	</code>
+	<code>
+		<span class="code-snippet_outer">
+			<span class="code-snippet__comment"># 历史行情数据-后复权</span>
+		</span>
+	</code>
+	<code>
+		<span class="code-snippet_outer">            df = ak.stock_zh_a_hist(symbol=ak_code, period=period, start_date=start_date, end_date=end_date, adjust=adj,</span>
+	</code>
+	<code>
+		<span class="code-snippet_outer">                                    timeout=timeout)</span>
+	</code>
+	<code>
+		<span class="code-snippet_outer">
+			<span class="code-snippet__keyword">if</span> df.empty:
+		</span>
+	</code>
+	<code>
+		<span class="code-snippet_outer">
+			<span class="code-snippet__keyword">continue</span>
+		</span>
+	</code>
+	<code>
+		<span class="code-snippet_outer"></span>
+	</code>
+	<code>
+		<span class="code-snippet_outer">
+			<span class="code-snippet__keyword">if</span> ak_code.startswith(
+			<span class="code-snippet__string">'6'</span>) == 
+			<span class="code-snippet__keyword">True</span>:
+		</span>
+	</code>
+	<code>
+		<span class="code-snippet_outer">                df[
+			<span class="code-snippet__string">'股票代码'</span>] = ak_code + 
+			<span class="code-snippet__string">'.SH'</span>
+		</span>
+	</code>
+	<code>
+		<span class="code-snippet_outer">
+			<span class="code-snippet__keyword">elif</span> ak_code.startswith(
+			<span class="code-snippet__string">'8'</span>) == 
+			<span class="code-snippet__keyword">True</span>:
+		</span>
+	</code>
+	<code>
+		<span class="code-snippet_outer">                df[
+			<span class="code-snippet__string">'股票代码'</span>] = ak_code + 
+			<span class="code-snippet__string">'.BJ'</span>
+		</span>
+	</code>
+	<code>
+		<span class="code-snippet_outer">
+			<span class="code-snippet__keyword">else</span>:
+		</span>
+	</code>
+	<code>
+		<span class="code-snippet_outer">                df[
+			<span class="code-snippet__string">'股票代码'</span>] = ak_code + 
+			<span class="code-snippet__string">'.SZ'</span>
+		</span>
+	</code>
+	<code>
+		<span class="code-snippet_outer"></span>
+	</code>
+	<code>
+		<span class="code-snippet_outer">            df[
+			<span class="code-snippet__string">'股票名称'</span>] = ak_name
+		</span>
+	</code>
+	<code>
+		<span class="code-snippet_outer">            df.sort_values(by=[
+			<span class="code-snippet__string">'日期'</span>], ascending=
+			<span class="code-snippet__keyword">True</span>, inplace=
+			<span class="code-snippet__keyword">True</span>)
+		</span>
+	</code>
+	<code>
+		<span class="code-snippet_outer">            df.reset_index(drop=
+			<span class="code-snippet__keyword">True</span>, inplace=
+			<span class="code-snippet__keyword">True</span>)
+		</span>
+	</code>
+	<code>
+		<span class="code-snippet_outer"></span>
+	</code>
+	<code>
+		<span class="code-snippet_outer">            path = create_path(ak_code)</span>
+	</code>
+	<code>
+		<span class="code-snippet_outer">            df.to_csv(path, index=
+			<span class="code-snippet__keyword">False</span>, mode=
+			<span class="code-snippet__string">'w'</span>, encoding=
+			<span class="code-snippet__string">'gbk'</span>)
+		</span>
+	</code>
+	<code>
+		<span class="code-snippet_outer">
+			<span class="code-snippet__comment"># 休眠指定的时间</span>
+		</span>
+	</code>
+	<code>
+		<span class="code-snippet_outer">            time.sleep(random.uniform(
+			<span class="code-snippet__number">300</span>, 
+			<span class="code-snippet__number">1000</span>) / 
+			<span class="code-snippet__number">100</span>)
+		</span>
+	</code>
+	<code>
+		<span class="code-snippet_outer">
+			<span class="code-snippet__keyword">break</span>
+			<span class="code-snippet__comment"># 成功运行后跳出循环</span>
+		</span>
+	</code>
+	<code>
+		<span class="code-snippet_outer"></span>
+	</code>
+	<code>
+		<span class="code-snippet_outer">
+			<span class="code-snippet__keyword">except</span> Exception 
+			<span class="code-snippet__keyword">as</span> e:
+		</span>
+	</code>
+	<code>
+		<span class="code-snippet_outer">
+			<span class="code-snippet__comment"># 处理其他未特定捕获的异常</span>
+		</span>
+	</code>
+	<code>
+		<span class="code-snippet_outer">            print(
+			<span class="code-snippet__string">"发生了其他异常！"</span>, e)
+		</span>
+	</code>
+</span>
+
+
+
+import os
+import time
+import random
+import pandas as pd
+import akshare as ak #from multiprocessing 
+import Pool from datetime 
+import datetime
+import warnings
+
+# 东财实时行情数据接口获取所有股票代码接口
+df = ak.stock_zh_a_spot_em()  
+# 沪深京 A 股
+print(df.shape)
+
+
+warnings.filterwarnings("ignore")
+pd.set_option('display.max_rows',None)
+#显示所有行
+pd.set_option('display.max_columns',None)  
+#显示所有列
+pd.set_option('display.unicode.ambiguous_as_wide', True)
+#设置列名对齐
+pd.set_option('display.unicode.east_asian_width', True)
+#设置列名对齐
+pd.set_option('display.float_format',  '{:,.2f}'.format)
+#设置浮点精度
+# 创建文件存储路径
+def create_path(ak_code):
+    global path    
+    # date_str = str(pd.to_datetime(start_date).date()) 
+    # 日期转换为字符串    
+    path = os.path.join(".", "all_stock_candle", "stock")    
+    # 保存数据
+    if not os.path.exists(path):        
+    	os.makedirs(path)  # 创建多级文件夹    
+    file_name = ak_code + '.csv'    
+    return os.path.join(path, file_name)
+
+# 获取所有股票的历史数据
+def do_load(ak_code, ak_name, period, start_date, end_date, adj, timeout):    
+	print(ak_code, ak_name)    
+	for i in range(3):        
+		try:            
+			# 历史行情数据-后复权            
+			df = ak.stock_zh_a_hist(symbol=ak_code, period=period, start_date=start_date, end_date=end_date, adjust=adj, timeout=timeout)
+			if df.empty:                
+				continue            
+			if ak_code.startswith('6') == True:                
+				df['股票代码'] = ak_code + '.SH'            
+			elif ak_code.startswith('8') == True:                
+				df['股票代码'] = ak_code + '.BJ'            
+			else:                
+				df['股票代码'] = ak_code + '.SZ'            
+
+			df['股票名称'] = ak_name            
+			df.sort_values(by=['日期'], ascending=True, inplace=True)            
+			df.reset_index(drop=True, inplace=True)            
+			path = create_path(ak_code)            
+			df.to_csv(path, index=False, mode='w', encoding='gbk')            
+			# 休眠指定的时间            
+			time.sleep(random.uniform(300, 1000) / 100)            
+			break  # 成功运行后跳出循环        
+		except Exception as e:            
+			# 处理其他未特定捕获的异常            
+			print("发生了其他异常！", e)
